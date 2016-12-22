@@ -1,0 +1,6 @@
+[package]
+name = "tred-lib"
+version = "0.1.0"
+authors = ["Sam Sartor <me@samsartor.com>"]
+
+[dependencies]

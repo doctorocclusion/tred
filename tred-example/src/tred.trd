@@ -1,0 +1,81 @@
+def Expr Single List;
+def Comment Str;
+def Name Str;
+def Regex Str;
+def StrLiteral Str;
+
+let white_m {
+	/[\s\n\r]*/;
+};
+
+let blank_m {
+	/[\s\n\r]+/;
+};
+
+let name_m {
+	not "_";
+	let val: Str;
+	capture val;
+	/[\w_]+/;
+	export Name(val);
+};
+
+let strlit_m {
+    /"/;
+	let val Str;
+	capture val;
+	// TODO ecapes in strings
+	/[^"]/;
+	export StrLiteral(val);
+	/"/;
+}
+
+let regex_m {
+	"/";
+	let val Str;
+	capture val;
+	// TODO slashes in regexes
+	many {
+		not "/";
+		/./;
+	};
+	export Regex(val);
+	"/";
+}
+
+let block_m {
+	"{";
+	many {or blank_m comment_m exp_m};
+	"}";
+}
+
+let comment_m {;
+	"//";
+	/ */;
+	let com Str;
+	capture com;
+	/[^\n]*/;
+	export Comment(com);
+	/\n/;
+};
+
+let exp_m {
+	let op Single;
+	into op;
+	or strlit_m regex_m block_m name_m;
+
+	let args List;
+	into args;
+	many {
+		blank_m;
+		or strlit_m regex_m block_m name_m;
+	};
+
+	white_m;
+	";";
+
+	into super;
+	export Expr(op args);
+};
+
+many {or blank_m comment_m exp_m};

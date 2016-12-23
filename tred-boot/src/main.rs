@@ -1,3 +1,16 @@
+extern crate regex;
+
+use std::fs::File;
+use std::io::prelude::*;
+use tred::{Parse};
+
+mod tred;
+
 fn main() {
-    println!("Hello, world!");
+	let mut f = File::open("tred.trd").unwrap();
+	let mut s = String::new();
+	f.read_to_string(&mut s).unwrap();
+	
+	let parse = Parse::new();
+	println!{"{:?}", parse.parse(&s)};
 }

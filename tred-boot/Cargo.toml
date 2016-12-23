@@ -5,3 +5,4 @@ authors = ["Sam Sartor <me@samsartor.com>"]
 
 [dependencies]
 tred-lib = { path = "../tred-lib" }
+regex = "0.1"

@@ -1,0 +1,106 @@
+def Expr item list;
+def Comment str;
+def Name str;
+def Tuple item list;
+def Regex str;
+def StrLiteral str;
+def Block list
+
+let white_m {
+    /[\s\n\r]*/;
+};
+
+let blank_m {
+    /[\s\n\r]+/;
+};
+
+let name_m {
+    not "_";
+    capture val;
+    /[\w_]+/;
+    export Name(val);
+};
+
+let tuple_m {
+    not "_";
+    capture name;
+    /[\w_]+/;S
+    capture nul;
+
+    into args;
+    "(";
+    many {
+        value_m;
+    } blank_m;
+    ")";
+
+    into super;
+    export Tuple(Name(name) args);
+}
+
+let strlit_m {
+    /"/;
+    capture val;
+    // TODO ecapes in strings
+    /[^"]/;
+    export StrLiteral(val);
+    /"/;
+}
+
+let regex_m {
+    "/";
+    capture val;
+    // TODO slashes in regexes
+    many {
+        not "/";
+        /./;
+    };
+    export Regex(val);
+    "/";
+}
+
+let block_m {
+    into exps;
+    "{";
+    many { line_m; };
+    "}";
+
+    into super;
+    export exps;
+}
+
+let comment_m {;
+    "//";
+    / */;
+    capture com;
+    /[^\n]*/;
+    export Comment(com);
+    /\n/;
+};
+
+let value_m {
+    or strlit_m regex_m block_m tuple_m name_m;
+}
+
+let exp_m {
+    into_once op;
+    value_m;
+
+    into args;
+    many {
+        blank_m;
+        value_m;
+    };
+
+    white_m;
+    ";";
+
+    into super;
+    export Expr(op args);
+};
+
+let line_m {
+    or blank_m comment_m exp_m;
+}
+
+many { line_m; };

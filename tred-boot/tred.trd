@@ -24,7 +24,7 @@ let name_m {
 let tuple_m {
     not "_";
     capture name;
-    /[\w_]+/;S
+    /[\w_]+/;
     capture nul;
 
     into args;

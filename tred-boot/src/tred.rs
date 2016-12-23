@@ -9,7 +9,7 @@
 * Usage: 
 *   1. Create a new parser using Parse::new()
 *   2. Pass input text into the parse(&self, &str) function
-*   3. Traverse the outputted Item tree
+*   3. Traverse the outputSted Item tree
 * 
 * Note that a only a single Parse object needs to be created.
 *
@@ -41,7 +41,7 @@ pub struct Parse {
     comment_regex_1: Regex,
     comment_regex_2: Regex,
     strlit_regex: Regex,
-    value_regex: Regex
+    regex_regex: Regex
 }
 
 impl Parse {
@@ -58,7 +58,7 @@ impl Parse {
             comment_regex_1: Regex::new(r"^\s*").unwrap(),
             comment_regex_2: Regex::new(r"^[^\n]*").unwrap(),
             strlit_regex: Regex::new("^[^\"]+").unwrap(),
-            value_regex: Regex::new(r"^[^;{}\s]+").unwrap()
+            regex_regex: Regex::new("^[^/]+").unwrap()
         }
     }
 }
@@ -134,17 +134,6 @@ fn block_comment_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: V
     Ok((text, at, out))
 }
 
-/*
-let strlit_m {
-    /"/;
-    capture val;
-    // TODO ecapes in strings
-    /[^"]/;
-    export StrLiteral(val);
-    /"/;
-};
-*/
-
 fn block_strlit_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     let mut at = 0;
     let mut text = input;
@@ -178,23 +167,111 @@ fn block_strlit_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Ve
     Ok((text, at, out))
 }
 
-fn block_name_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+fn block_regex_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     let mut at = 0;
     let mut text = input;
+
+    if !text.starts_with("/") {
+        //println!("Regex Start Error: {:?}", pos + at);
+        return Err(ParseErr{at: at + pos}); 
+    }
+    at += 1;
+    text = &text[1..];
     
     let cap_start = at;
 
-    if let Some((_, end)) = parse.value_regex.find(text) {
+    if let Some((_, end)) = parse.regex_regex.find(text) {
         at += end;
         text = &text[end..];
     } else {
-        //println!("Value Error: {:?}", at + pos);
+        //println!("Regex Error: {:?}", at + pos);
         return Err(ParseErr{at: at + pos});
     }
 
-    let out = vec![Box::new(Item::Name(input[cap_start..at].to_string()))];
+    let out = vec![Box::new(Item::Regex(input[cap_start..at].to_string()))];
+
+    if !text.starts_with("/") {
+        //println!("Regex End Error: {:?}", pos + at);
+        return Err(ParseErr{at: at + pos}); 
+    }
+    at += 1;
+    text = &text[1..];
 
     Ok((text, at, out))
+}
+
+fn block_tuple_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+    let mut at = 0;
+    let mut text = input;
+
+    let cap_start = at;
+    if let Some((_, end)) = parse.name_regex.find(text) {
+        at += end;
+        text = &text[end..];
+    } else {
+        //println!("Tuple Name Error: {:?}", at + pos);
+        return Err(ParseErr{at: at + pos});
+    }
+    let name = Box::new(Item::Name(input[cap_start..at].to_string()));
+
+    if !text.starts_with("(") {
+        //println!("Tuple Start Error: {:?}", pos + at);
+        return Err(ParseErr{at: at + pos}); 
+    }
+    at += 1;
+    text = &text[1..];
+
+    let mut args = vec![];
+    let mut first = true;
+    loop {
+        if !first {
+            let res = block_blank_m(parse, text, pos + at, vec![]);
+            if let Ok(mut x) = res {
+                text = x.0;
+                at += x.1;
+                args.append(&mut x.2);
+            } else {
+                //println!("Tuple Arg Blank Error: {:?}", res);
+                break; 
+            }
+        } else { first = false; }
+        let res = block_value_m(parse, text, pos + at, vec![]);
+        if let Ok(mut x) = res {
+            text = x.0;
+            at += x.1;
+            args.append(&mut x.2);
+        } else {
+            //println!("Tuple Arg Error: {:?}", res);
+            break;
+        }
+    }
+
+    if !text.starts_with(")") {
+        //println!("Tuple End Error: {:?}", pos + at);
+        return Err(ParseErr{at: at + pos}); 
+    }
+    at += 1;
+    text = &text[1..];
+
+    Ok((text, at, vec![Box::new(Item::Tuple(name, args))]))
+}
+
+fn block_name_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+    let mut at = 0;
+    let mut text = input;
+
+    let cap_start = at;
+    if let Some((_, end)) = parse.name_regex.find(text) {
+        at += end;
+        text = &text[end..];
+    } else {
+        //println!("Name Error: {:?}", at + pos);
+        return Err(ParseErr{at: at + pos});
+    }
+
+    let name = Box::new(Item::Name(input[cap_start..at].to_string()));
+
+    Ok((text, at, vec![name]))
 }
 
 fn block_block_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
@@ -233,7 +310,9 @@ fn block_block_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec
 
 fn block_value_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     if let Ok(res) = block_strlit_m(parse, input, pos, vec![]) { return Ok(res); }
+    if let Ok(res) = block_regex_m(parse, input, pos, vec![]) { return Ok(res); } 
     if let Ok(res) = block_block_m(parse, input, pos, vec![]) { return Ok(res); }
+    if let Ok(res) = block_tuple_m(parse, input, pos, vec![]) { return Ok(res); }
     if let Ok(res) = block_name_m(parse, input, pos, vec![]) { return Ok(res); } 
     Err(ParseErr{at: pos})
 }

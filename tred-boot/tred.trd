@@ -36,7 +36,7 @@ let tuple_m {
 
     into super;
     export Tuple(Name(name) args);
-}
+};
 
 let strlit_m {
     /"/;
@@ -45,7 +45,7 @@ let strlit_m {
     /[^"]/;
     export StrLiteral(val);
     /"/;
-}
+};
 
 let regex_m {
     "/";
@@ -57,7 +57,7 @@ let regex_m {
     };
     export Regex(val);
     "/";
-}
+};
 
 let block_m {
     into exps;
@@ -67,9 +67,9 @@ let block_m {
 
     into super;
     export exps;
-}
+};
 
-let comment_m {;
+let comment_m {
     "//";
     /\s*/;
     capture com;

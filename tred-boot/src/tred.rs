@@ -38,7 +38,9 @@ pub struct Parse {
     white_regex: Regex,
     blank_regex: Regex,
     name_regex: Regex,
-    comment_regex: Regex,
+    comment_regex_1: Regex,
+    comment_regex_2: Regex,
+    value_regex: Regex
 }
 
 impl Parse {
@@ -52,7 +54,9 @@ impl Parse {
             white_regex: Regex::new(r"^[\s\n\r]*").unwrap(),
             blank_regex: Regex::new(r"^[\s\n\r]+").unwrap(),
             name_regex: Regex::new(r"^[\w_]+").unwrap(),
-            comment_regex: Regex::new(r"^[^\n]*").unwrap(),
+            comment_regex_1: Regex::new(r"^\s*").unwrap(),
+            comment_regex_2: Regex::new(r"^[^\n]*").unwrap(),
+            value_regex: Regex::new(r"^[^;\s]+").unwrap()
         }
     }
 }
@@ -67,9 +71,151 @@ enum Object<'a, 'b> {
     It(Item)
 }
 
+fn block_blank_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+    let mut at = 0;
+    let mut text = input;
+
+    if let Some((_, end)) = parse.blank_regex.find(text) {
+        at += end;
+        text = &text[end..];
+    } else {
+        return Err(ParseErr{at: at + pos});
+    }
+
+    Ok((text, at, vec![]))
+}
+
+fn block_white_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+    let mut at = 0;
+    let mut text = input;
+
+    if let Some((_, end)) = parse.white_regex.find(text) {
+        at += end;
+        text = &text[end..];
+    } else {
+        return Err(ParseErr{at: at + pos});
+    }
+
+    Ok((text, at, vec![]))
+}
+
+fn block_comment_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+    let mut at = 0;
+    let mut text = input;
+    
+    if !text.starts_with("//") { return Err(ParseErr{at: at + pos}); }
+    at += 2;
+    text = &text[2..];
+
+    if let Some((_, end)) = parse.comment_regex_1.find(text) {
+        at += end;
+        text = &text[end..];
+    } else {
+        return Err(ParseErr{at: at + pos});
+    }
+
+    let cap_start = at;
+
+    if let Some((_, end)) = parse.comment_regex_2.find(text) {
+        at += end;
+        text = &text[end..];
+    } else {
+        return Err(ParseErr{at: at + pos});
+    }
+
+    let out = vec![Box::new(Item::Comment(input[cap_start..at].to_string()))];
+
+    if !text.starts_with("\n") { return Err(ParseErr{at: at + pos}); }
+    at += 1;
+    text = &text[1..];
+
+    Ok((text, at, out))
+}
+
+fn block_value_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+    let mut at = 0;
+    let mut text = input;
+    
+    let cap_start = at;
+
+    if let Some((_, end)) = parse.value_regex.find(text) {
+        at += end;
+        text = &text[end..];
+    } else {
+        println!("Value Error: {:?}", at + pos);
+        return Err(ParseErr{at: at + pos});
+    }
+
+    println!("Value: {:?}", &input[cap_start..at]);
+
+    let out = vec![Box::new(Item::Name(input[cap_start..at].to_string()))];
+
+    Ok((text, at, out))
+}
+
+fn block_exp_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+    let mut at = 0;
+    let mut text = input;
+
+    let mut op;
+    {
+        let res = block_value_m(parse, text, pos + at, vec![]);
+        if let Ok(mut x) = res {
+            text = x.0;
+            at += x.1;
+            op = x.2.pop().unwrap();
+        } else {
+            println!("Exp Op Error: {:?}", res);
+            return res; 
+        }
+    }
+
+    let mut args = vec![];
+    loop {
+        let res = block_blank_m(parse, text, pos + at, vec![]);
+        if let Ok(mut x) = res {
+            text = x.0;
+            at += x.1;
+            args.append(&mut x.2);
+        } else {
+            println!("Exp Arg Blank Error: {:?}", res);
+            break; 
+        }
+        let res = block_value_m(parse, text, pos + at, vec![]);
+        if let Ok(mut x) = res {
+            text = x.0;
+            at += x.1;
+            args.append(&mut x.2);
+        } else {
+            println!("Exp Arg Error: {:?}", res);
+            break;
+        }
+    }
+
+    {
+        let res = block_white_m(parse, text, pos + at, vec![]);
+        if let Ok(mut x) = res {
+            text = x.0;
+            at += x.1;
+            args.append(&mut x.2);
+        } else {
+            println!("Exp End Error: {:?}", res);
+            return res; 
+        }
+    }
+
+    if !text.starts_with(";") { return Err(ParseErr{at: at + pos}); }
+    at += 1;
+    text = &text[1..];
+
+    Ok((text, at, vec![Box::new(Item::Expr(op, args))]))
+}
+
 fn block_line_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    if input.len() < 5 { return Err(ParseErr{at: pos}); }
-    Ok((&input[5..], 1usize, vec![Box::new(Item::Comment(input[..5].to_string()))])) 
+    if let Ok(res) = block_blank_m(parse, input, pos, vec![]) { return Ok(res); }
+    if let Ok(res) = block_comment_m(parse, input, pos, vec![]) { return Ok(res); } 
+    if let Ok(res) = block_exp_m(parse, input, pos, vec![]) { return Ok(res); }
+    Err(ParseErr{at: pos})
 }
 
 fn block_main<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
@@ -82,7 +228,10 @@ fn block_main<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Bo
             text = x.0;
             total += x.1;
             into.append(&mut x.2);
-        } else { break; }
+        } else { 
+            println!("{:?}", res);
+            break;
+        }
     }
     Ok((text, total, into))
 }

@@ -62,7 +62,7 @@ let regex_m {
 let block_m {
     into exps;
     "{";
-    many { line_m; };
+    many line_m;
     "}";
 
     into super;
@@ -71,7 +71,7 @@ let block_m {
 
 let comment_m {;
     "//";
-    / */;
+    /\s*/;
     capture com;
     /[^\n]*/;
     export Comment(com);
@@ -103,4 +103,4 @@ let line_m {
     or blank_m comment_m exp_m;
 }
 
-many { line_m; };
+many line_m;

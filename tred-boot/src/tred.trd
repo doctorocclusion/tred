@@ -1,8 +1,10 @@
 def Expr Single List;
 def Comment Str;
 def Name Str;
+def Tuple Name List;
 def Regex Str;
 def StrLiteral Str;
+def Block List
 
 let white_m {
 	/[\s\n\r]*/;
@@ -19,6 +21,25 @@ let name_m {
 	/[\w_]+/;
 	export Name(val);
 };
+
+let tuple_m {
+	not "_";
+	let name: Str;
+	capture name;
+	/[\w_]+/;
+	capture nul;
+
+	let args: List;
+	into args;
+	"(";
+	many {
+		value_m;
+	} blank_m;
+	")";
+
+	into super;
+	export Tuple(Name(name), args);
+}
 
 let strlit_m {
     /"/;
@@ -44,9 +65,14 @@ let regex_m {
 }
 
 let block_m {
+	let exps List;
+	into exps;
 	"{";
-	many {or blank_m comment_m exp_m};
+	many { line_m; };
 	"}";
+
+	into super;
+	export exps;
 }
 
 let comment_m {;
@@ -59,16 +85,20 @@ let comment_m {;
 	/\n/;
 };
 
+let value_m {
+	or strlit_m regex_m block_m tuple_m name_m;
+}
+
 let exp_m {
 	let op Single;
 	into op;
-	or strlit_m regex_m block_m name_m;
+	value_m;
 
 	let args List;
 	into args;
 	many {
 		blank_m;
-		or strlit_m regex_m block_m name_m;
+		value_m;
 	};
 
 	white_m;
@@ -78,4 +108,8 @@ let exp_m {
 	export Expr(op args);
 };
 
-many {or blank_m comment_m exp_m};
+let line_m {
+	or blank_m comment_m exp_m;
+}
+
+many { line_m; };

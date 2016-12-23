@@ -3,7 +3,7 @@
 */
 
 /*
-* THIS IS A GENERATED SOURCE FILE, COMPILED FROM tred.trd
+* THIS IS A GENERATED SOURCE FILE, COMPILED FROM parse.trd
 * ALL CHANGES WILL BE OVERRIDEN
 *
 * Usage: 
@@ -16,7 +16,7 @@
 * Also note that the regex create is required
 */
 
-use regex::Regex;
+use tredlib::regex::Regex;
 
 #[derive(Debug)]
 pub enum Item {

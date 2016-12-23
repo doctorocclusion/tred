@@ -1,8 +1,7 @@
 [package]
-name = "tred-boot"
+name = "tredlib"
 version = "0.1.0"
 authors = ["Sam Sartor <me@samsartor.com>"]
 
 [dependencies]
-tred-lib = { path = "../tred-lib" }
 regex = "0.1"

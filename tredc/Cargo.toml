@@ -8,5 +8,6 @@ default = ["aster/with-syntex", "syntex_syntax"]
 nightly = []
 
 [dependencies]
+tredlib = { path = "../tredlib" }
 aster = { version = "*", default_features = false }
 syntex_syntax = { version = "*", optional = true }

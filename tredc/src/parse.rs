@@ -16,6 +16,7 @@
 * Also note that the regex create is required
 */
 
+use tredlib::{ParseErr};
 use tredlib::regex::Regex;
 
 #[derive(Debug)]
@@ -27,11 +28,6 @@ pub enum Item {
     Regex(String),
     StrLiteral(String),
     Block(Vec<Box<Item>>)
-}
-
-#[derive(Debug)]
-pub struct ParseErr {
-    at: usize
 }
 
 pub struct Parse {
@@ -46,7 +42,7 @@ pub struct Parse {
 
 impl Parse {
     pub fn parse(&self, input: &str) -> Result<(usize, Vec<Box<Item>>), ParseErr> {
-        let res = try!(block_main(self, input, 0, vec![]));
+        let res = try!(block_main(self, input, 0));
         Ok((res.1, res.2))
     }
 
@@ -63,17 +59,9 @@ impl Parse {
     }
 }
 
-type BlockFn<'a, 'b> = fn(&'b Parse, &'a str, usize, Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr>;
+type BlockFn<'a, 'b> = fn(&'b Parse, &'a str, usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr>;
 
-enum Object<'a, 'b> {
-    Str(String),
-    Name(String),
-    Reg(Regex),
-    Block(BlockFn<'a, 'b>),
-    It(Item)
-}
-
-fn block_blank_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+fn block_blank_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     let mut at = 0;
     let mut text = input;
 
@@ -87,7 +75,7 @@ fn block_blank_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec
     Ok((text, at, vec![]))
 }
 
-fn block_white_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+fn block_white_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     let mut at = 0;
     let mut text = input;
 
@@ -101,7 +89,7 @@ fn block_white_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec
     Ok((text, at, vec![]))
 }
 
-fn block_comment_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+fn block_comment_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     let mut at = 0;
     let mut text = input;
     
@@ -134,7 +122,7 @@ fn block_comment_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: V
     Ok((text, at, out))
 }
 
-fn block_strlit_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+fn block_strlit_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     let mut at = 0;
     let mut text = input;
 
@@ -167,7 +155,7 @@ fn block_strlit_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Ve
     Ok((text, at, out))
 }
 
-fn block_regex_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+fn block_regex_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     let mut at = 0;
     let mut text = input;
 
@@ -200,7 +188,7 @@ fn block_regex_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec
     Ok((text, at, out))
 }
 
-fn block_tuple_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+fn block_tuple_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     let mut at = 0;
     let mut text = input;
 
@@ -256,7 +244,7 @@ fn block_tuple_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec
     Ok((text, at, vec![Box::new(Item::Tuple(name, args))]))
 }
 
-fn block_name_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+fn block_name_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     let mut at = 0;
     let mut text = input;
 
@@ -274,7 +262,7 @@ fn block_name_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<
     Ok((text, at, vec![name]))
 }
 
-fn block_block_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+fn block_block_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     let mut at = 0;
     let mut text = input;
     let mut out = vec![];
@@ -287,7 +275,7 @@ fn block_block_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec
     text = &text[1..];
 
     loop {
-        let res = block_line_m(parse, text, pos + at, vec![]);
+        let res = block_line_m(parse, text, pos + at);
         if let Ok(mut x) = res {
             text = x.0;
             at += x.1;
@@ -308,22 +296,22 @@ fn block_block_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec
     Ok((text, at, vec![Box::new(Item::Block(out))]))
 }
 
-fn block_value_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    if let Ok(res) = block_strlit_m(parse, input, pos, vec![]) { return Ok(res); }
-    if let Ok(res) = block_regex_m(parse, input, pos, vec![]) { return Ok(res); } 
-    if let Ok(res) = block_block_m(parse, input, pos, vec![]) { return Ok(res); }
-    if let Ok(res) = block_tuple_m(parse, input, pos, vec![]) { return Ok(res); }
-    if let Ok(res) = block_name_m(parse, input, pos, vec![]) { return Ok(res); } 
+fn block_value_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+    if let Ok(res) = block_strlit_m(parse, input, pos) { return Ok(res); }
+    if let Ok(res) = block_regex_m(parse, input, pos) { return Ok(res); } 
+    if let Ok(res) = block_block_m(parse, input, pos) { return Ok(res); }
+    if let Ok(res) = block_tuple_m(parse, input, pos) { return Ok(res); }
+    if let Ok(res) = block_name_m(parse, input, pos) { return Ok(res); } 
     Err(ParseErr{at: pos})
 }
 
-fn block_exp_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+fn block_exp_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     let mut at = 0;
     let mut text = input;
 
     let mut op;
     {
-        let res = block_value_m(parse, text, pos + at, vec![]);
+        let res = block_value_m(parse, text, pos + at);
         if let Ok(mut x) = res {
             text = x.0;
             at += x.1;
@@ -336,7 +324,7 @@ fn block_exp_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<B
 
     let mut args = vec![];
     loop {
-        let res = block_blank_m(parse, text, pos + at, vec![]);
+        let res = block_blank_m(parse, text, pos + at);
         if let Ok(mut x) = res {
             text = x.0;
             at += x.1;
@@ -345,7 +333,7 @@ fn block_exp_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<B
             //println!("Exp Arg Blank Error: {:?}", res);
             break; 
         }
-        let res = block_value_m(parse, text, pos + at, vec![]);
+        let res = block_value_m(parse, text, pos + at);
         if let Ok(mut x) = res {
             text = x.0;
             at += x.1;
@@ -357,7 +345,7 @@ fn block_exp_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<B
     }
 
     {
-        let res = block_white_m(parse, text, pos + at, vec![]);
+        let res = block_white_m(parse, text, pos + at);
         if let Ok(mut x) = res {
             text = x.0;
             at += x.1;
@@ -375,19 +363,19 @@ fn block_exp_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<B
     Ok((text, at, vec![Box::new(Item::Expr(op, args))]))
 }
 
-fn block_line_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    if let Ok(res) = block_blank_m(parse, input, pos, vec![]) { return Ok(res); }
-    if let Ok(res) = block_comment_m(parse, input, pos, vec![]) { return Ok(res); } 
-    if let Ok(res) = block_exp_m(parse, input, pos, vec![]) { return Ok(res); }
+fn block_line_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+    if let Ok(res) = block_blank_m(parse, input, pos) { return Ok(res); }
+    if let Ok(res) = block_comment_m(parse, input, pos) { return Ok(res); } 
+    if let Ok(res) = block_exp_m(parse, input, pos) { return Ok(res); }
     Err(ParseErr{at: pos})
 }
 
-fn block_main<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize, pars: Vec<Box<Object>>) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
+fn block_main<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     let mut into = vec![];
     let mut text = input;
     let mut total = 0usize;
     loop {
-        let res = block_line_m(parse, text, pos + total, vec![]);
+        let res = block_line_m(parse, text, pos + total);
         if let Ok(mut x) = res {
             text = x.0;
             total += x.1;

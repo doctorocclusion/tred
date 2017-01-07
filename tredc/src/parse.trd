@@ -6,26 +6,26 @@ def Regex str;
 def StrLiteral str;
 def Block list
 
-let white_m {
+stat white_m {
     /[\s\n\r]*/;
 };
 
-let blank_m {
+stat blank_m {
     /[\s\n\r]+/;
 };
 
-let name_m {
+stat name_m {
     not "_";
     capture val;
     /[\w_]+/;
     export Name(val);
 };
 
-let tuple_m {
+stat tuple_m {
     not "_";
     capture name;
     /[\w_]+/;
-    capture nul;
+    stop name;
 
     into args;
     "(";
@@ -34,11 +34,10 @@ let tuple_m {
     } blank_m;
     ")";
 
-    into super;
     export Tuple(Name(name) args);
 };
 
-let strlit_m {
+stat strlit_m {
     /"/;
     capture val;
     // TODO ecapes in strings
@@ -47,7 +46,7 @@ let strlit_m {
     /"/;
 };
 
-let regex_m {
+stat regex_m {
     "/";
     capture val;
     // TODO slashes in regexes
@@ -59,30 +58,28 @@ let regex_m {
     "/";
 };
 
-let block_m {
+stat block_m {
     into exps;
     "{";
     many line_m;
     "}";
 
-    into super;
     export exps;
 };
 
-let comment_m {
+stat comment_m {
     "//";
     /\s*/;
     capture com;
     /[^\n]*/;
     export Comment(com);
-    /\n/;
 };
 
-let value_m {
+stat value_m {
     or strlit_m regex_m block_m tuple_m name_m;
 }
 
-let exp_m {
+stat exp_m {
     into_once op;
     value_m;
 
@@ -95,12 +92,11 @@ let exp_m {
     white_m;
     ";";
 
-    into super;
     export Expr(op args);
 };
 
-let line_m {
+stat line_m {
     or blank_m comment_m exp_m;
-}
+};
 
 many line_m;

@@ -59,8 +59,6 @@ impl Parse {
     }
 }
 
-type BlockFn<'a, 'b> = fn(&'b Parse, &'a str, usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr>;
-
 fn block_blank_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
     let mut at = 0;
     let mut text = input;
@@ -114,10 +112,6 @@ fn block_comment_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Resu
     }
 
     let out = vec![Box::new(Item::Comment(input[cap_start..at].to_string()))];
-
-    if !text.starts_with("\n") { return Err(ParseErr{at: at + pos}); }
-    at += 1;
-    text = &text[1..];
 
     Ok((text, at, out))
 }
@@ -213,7 +207,7 @@ fn block_tuple_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result
     let mut first = true;
     loop {
         if !first {
-            let res = block_blank_m(parse, text, pos + at, vec![]);
+            let res = block_blank_m(parse, text, pos + at);
             if let Ok(mut x) = res {
                 text = x.0;
                 at += x.1;
@@ -223,7 +217,7 @@ fn block_tuple_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result
                 break; 
             }
         } else { first = false; }
-        let res = block_value_m(parse, text, pos + at, vec![]);
+        let res = block_value_m(parse, text, pos + at);
         if let Ok(mut x) = res {
             text = x.0;
             at += x.1;

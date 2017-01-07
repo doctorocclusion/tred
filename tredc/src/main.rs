@@ -1,74 +1,43 @@
-extern crate aster;
+#![feature(box_syntax, box_patterns, slice_patterns)]
 
+extern crate core;
+
+extern crate aster;
 #[cfg(feature = "nightly")]
 extern crate syntax;
-
 #[cfg(not(feature = "nightly"))]
 extern crate syntex_syntax as syntax;
 
 #[macro_use]
+extern crate lazy_static;
+extern crate unescape;
+
+#[macro_use]
 extern crate tredlib;
+
+mod parse;
+mod compile;
 
 use tredlib::{ParseErr};
 use tredlib::gen;
 use tredlib::regex::{Regex};
 
-fn op1(p:usize, s: &str) -> Result<(&str, usize, Vec<i32>), ParseErr> {
-	let mut pos:usize = p;
-    let mut text = &s[..];
-    let mut out = vec![];
+use parse::{Parse};
 
-    _gen_match_str!(pos, text, out, "l");
-    out.push(1);
+use std::io::prelude::*;
+use std::fs::File;
 
-    Ok((text, pos, out))
-}
-
-#[allow(unused_variables)]
-#[allow(dead_code)]
-#[allow(unused_mut)]
-fn op2(p:usize, s: &str) -> Result<(&str, usize, Vec<i32>), ParseErr> {
-	let mut pos:usize = p;
-    let mut text = &s[..];
-    let mut out = vec![];
-
-    _gen_match_regex!(pos, text, out, Regex::new(r"[^l]+").unwrap());
-    out.push(2);
-
-    Ok((text, pos, out))
-}
-
-fn op3(p:usize, s: &str) -> Result<(&str, usize, Vec<i32>), ParseErr> {
-	let mut pos:usize = p;
-    let mut text = &s[..];
-    let mut out = vec![];
-
-    _gen_match_str!(pos, text, out, " ");
-    out.push(3);
-
-    Ok((text, pos, out))
-}
-
-fn block_2(p:usize, s: &str) -> Result<(&str, usize, Vec<i32>), ParseErr> {
-    let mut pos:usize = p;
-    let mut text = &s[..];
-    let mut out = vec![];
-
-	_gen_or!(pos, text, out, op1(pos, text), op3(pos, text), op2(pos, text));
-
-    Ok((text, pos, out))
-}
-
-fn block_ex(s: &str) -> Result<(&str, usize, Vec<i32>), ParseErr> {
-    let mut pos:usize = 0;
-    let mut text = &s[..];
-    let mut out = vec![];
-
-    _gen_many!(pos, text, out, block_2(pos, text));
-
-    Ok((text, pos, out))
+lazy_static! {
+    static ref TRED_PARSER: Parse = Parse::new();
 }
 
 fn main() {
-	println!("{:?}", block_ex(&"   hello"[..]));
+    let mut f = File::open("src/parse.trd").unwrap();
+    let mut s = String::new();
+    f.read_to_string(&mut s).unwrap();
+
+    match TRED_PARSER.parse(&s) {
+        Ok((_, toks)) => compile::compile(&toks[..]),
+        err => println!("{:?}", err)
+    }
 }

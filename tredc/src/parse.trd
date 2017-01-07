@@ -4,7 +4,7 @@ def Name str;
 def Tuple item list;
 def Regex str;
 def StrLiteral str;
-def Block list
+def Block list;
 
 stat white_m {
     /[\s\n\r]*/;
@@ -77,7 +77,7 @@ stat comment_m {
 
 stat value_m {
     or strlit_m regex_m block_m tuple_m name_m;
-}
+};
 
 stat exp_m {
     into_once op;

@@ -76,12 +76,14 @@ stat comment_m {
 };
 
 stat value_m {
+    into export;
     or strlit_m regex_m block_m tuple_m name_m;
 };
 
 stat exp_m {
     into_once op;
     value_m;
+    end op;
 
     into args;
     many {
@@ -96,7 +98,9 @@ stat exp_m {
 };
 
 stat line_m {
+    into export;
     or blank_m comment_m exp_m;
 };
 
+into export;
 many line_m;

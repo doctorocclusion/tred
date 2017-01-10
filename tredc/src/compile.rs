@@ -116,6 +116,33 @@ fn compile_name_expr(dat: &mut CompileData, block: usize, op: &String, args: &Ve
         },
         // stat expression (already handled)
         "stat" => (),
+        "not" => {
+
+        },
+        "capture" => {
+
+        },
+        "into" => {
+
+        },
+        "into_once" => {
+
+        },
+        "stop" => {
+
+        },
+        "many" => {
+
+        },
+        "some" => {
+
+        },
+        "option" => {
+
+        },
+        "or" => {
+
+        },
         // no other expressions
         _ => ()
     }
@@ -129,13 +156,13 @@ fn compile_expr(dat: &mut CompileData, block: usize, op: &Item, args: &Vec<Box<I
             compile_name_expr(dat, block, name, args);
         },
         &Item::Block(_) | &Item::Regex(_) | &Item::StrLiteral(_) => {
-            compile_value(dat, block, op).unwrap().gen_match(&mut dat.blocks[block]); // TODO no unwraps
+            static_value(dat, block, op).unwrap().gen_match(&mut dat.blocks[block]); // TODO no unwraps
         },
         _ => panic!(format!("{:?} is not a valid operation", op))
     }
 }
 
-fn compile_value(dat: &mut CompileData, block: usize, value: &Item) -> Result<Value, String> {
+fn static_value(dat: &mut CompileData, block: usize, value: &Item) -> Result<Value, String> {
     match value {
         // compile block and add to global functions
         &Item::Block(ref lines) => {
@@ -168,7 +195,7 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) {
 
                 // check name and value
                 if let [box Item::Name(ref name), box ref value] = args[..] {
-                    let v = compile_value(dat, block, value).unwrap();
+                    let v = static_value(dat, block, value).unwrap();
                     dat.blocks[block].statics.insert(name.clone(), v);  // TODO no unwraps
                 } else {
                     panic!(format!("\"stat\" expr \"stat <name> <value>\" has invalid args: {:?}", args))

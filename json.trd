@@ -1,0 +1,93 @@
+def MapEntry str item;
+def Map list;
+def Array list;
+def String str;
+def Number str;
+def True;
+def False;
+def Null;
+
+stat white_m /[\s\n\r]*/;
+
+stat blank_m /[\s\n\r]+/;
+
+stat str_fill {
+	many {
+		or /[^\]/ {
+			"\\";
+			or "\"" "\\" "/" "b" "n" "f" "n" "r" "t" /u[\da-fA-F]{6}/;
+		};
+	};
+};
+
+stat v_string {
+	"\"";
+	capture val;
+	str_fill;
+	export String(val);
+	"\"";
+}
+
+stat map_entry {
+	"\"";
+	capture key;
+	str_fill;
+	stop key;
+	"\"";
+	white_m;
+	":";
+	white_m;
+	into_once val;
+	value;
+	export MapEntry(key val);
+}
+
+stat v_map {
+	"{";
+	white_m;
+	into entries;
+	some map_entry { white_m; "," white_m; };
+	export Map(entries);
+	white_m;
+	"}";
+};
+
+stat v_array {
+	"[";
+	white_m;
+	into values;
+	some value { white_m; "," white_m; };
+	export Array(values);
+	white_m;
+	"]";
+};
+
+stat v_number {
+	capture val;
+
+	// /-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?/
+
+	option "-";
+	or "0" { /1-9/; some /\d/; };
+	option { "."; many /\d/; };
+	option {
+		or "e" "E";
+		or "+" "-" "";
+		many /\d/;
+	};
+
+	export Number(val);
+};
+
+stat v_other {
+	into export;
+	or { "true"; export True(); } { "false"; export False(); } { "null"; export Null(); };
+};
+
+stat value {
+	into export;
+	or v_string v_map v_array v_other v_number;
+};
+
+into export;
+value;

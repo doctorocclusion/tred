@@ -67,19 +67,6 @@ macro_rules! _tredgen_or {
 }
 
 #[macro_export]
-macro_rules! _tredgen_some {
-    ($pos:ident, $text:ident, $out:expr, $x:expr) => {
-        loop {
-            if let Ok(mut res) = $x {
-                _tredgen_append!($pos, $text, $out, res);
-            } else {
-                break; 
-            }
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! _tredgen_many {
     ($pos:ident, $text:ident, $out:expr, $x:expr) => {
         {

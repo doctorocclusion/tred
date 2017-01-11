@@ -15,7 +15,10 @@ use parse::{self, Parse, Item};
 use unescape::unescape;
 
 use std::collections::HashMap;
+use std::collections::hash_map;
 use std::rc::Rc;
+use std::ops::Deref;
+use std::sync::{Arc, atomic};
 
 use core::fmt::{self, Formatter, Debug};
 
@@ -25,6 +28,23 @@ enum DefPart {
     ITEM,
     LIST,
 }
+
+#[derive(Debug, Clone)]
+struct SecNext {
+    num: Arc<atomic::AtomicUsize>
+}
+
+impl SecNext {
+    pub fn new(first: usize) -> SecNext {
+        SecNext {
+            num: Arc::new(atomic::AtomicUsize::new(first))
+        }
+    }
+
+    pub fn next(&self) -> usize {
+        self.num.fetch_add(1, atomic::Ordering::Relaxed)
+    }
+} 
 
 #[derive(Debug)]
 struct CompileData {
@@ -41,15 +61,27 @@ impl CompileData {
             blocks: Vec::new(),
         }
     }
+
+    pub fn get_static(&self, block: usize, id: &String) -> Option<&StaticValue> {
+        let mut at = block;
+        loop {
+            let b = &self.blocks[at];
+            let v = b.statics.get(id);
+            if v.is_some() { return v; }
+            else if b.parent.is_some() { at = b.parent.unwrap(); }
+            else { break; }
+        }
+        None
+    }
 }
 
 struct BlockDat {
     pub id: String,
     pub index: usize,
     pub parent: Option<usize>,
-    pub statics: HashMap<String, Value>,
-    pub locals: HashMap<String, Rc<LocalVal>>,
-    pub next_var: u32,
+    pub statics: HashMap<String, StaticValue>,
+    pub dyns: HashMap<String, DynValue>,
+    pub next_var: SecNext,
     pub into_super: bool,
     pub block: Option<ast::Block>,
 }
@@ -67,38 +99,82 @@ impl BlockDat {
             index: index,
             parent: parent,
             statics: HashMap::new(),
-            locals: HashMap::new(),
-            next_var: 0,
+            dyns: HashMap::new(),
+            next_var: SecNext::new(0),
             into_super: false,
             block: None,
         }
     }
 
-    pub fn next_var(&mut self) -> String {
-        let out = format!("_v{}", self.next_var);
-        self.next_var += 1;
-        return out;
+    pub fn next_var(&self) -> String {
+        format!("_v{}", self.next_var.next())
+    }
+
+    pub fn var_gen(&self) -> Box<Fn() -> String> {
+        let gen = self.next_var.clone();
+        Box::new(move || format!("_v{}", gen.next()))
+    }
+}
+
+#[derive(Debug)]
+enum DynValue {
+    Val (Value),
+    Capture {dat: CaptureDat},
+    IntoList {vec_name: String},
+    IntoOnce {let_name: String},
+}
+
+impl DynValue {
+    pub fn deref(&self, vars: &Fn() -> String, code: &mut Vec<ast::Stmt>) -> Result<Value, String> {
+        match self {
+            &DynValue::Val(ref val) => Ok(val.clone()),
+            &DynValue::Capture{dat: ref cap} => {
+                let name = vars();
+                code.push(StmtBuilder::new().let_()
+                    .mut_id(&name)
+                    .build_expr(cap.eval_ref()));
+                Ok(Value::Str {var_name: name})
+            },
+            _ => Err(format!("{:?} is not a matchable value", self)),
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 enum Value {
-    Regex {
-        id: String,
-    },
-    StringLit {
-        value: String,
-    },
-    Block {
-        index: usize,
-    },
-    Local ( Rc<LocalVal> ),
+    Static (StaticValue),
+    Str {var_name: String},
 }
 
 impl Value {
-    fn gen_match(&self, dat: &mut BlockDat) -> Vec<ast::Stmt> {
+    pub fn gen_match(&self, dat: &mut BlockDat) -> Vec<ast::Stmt> {
         match self {
-            &Value::StringLit{ref value} => {
+            &Value::Static(ref stat) => stat.gen_match(dat),
+            &Value::Str{ref var_name} => vec![StmtBuilder::new().expr().build_mac(gen_mac("_tredgen_match_str", vec![
+                &|e| e.id("_pos"),
+                &|e| e.id("_text"),
+                &|e| e.id("TODO_out"),
+                &|e| e.id(var_name),
+            ]))]
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum StaticValue {
+    Regex {id: String},
+    Str {value: String},
+    Block {index: usize},
+}
+
+impl StaticValue {
+    pub fn into_val(self) -> Value {
+        Value::Static(self)
+    }
+
+    pub fn gen_match(&self, dat: &mut BlockDat) -> Vec<ast::Stmt> {
+        match self {
+            &StaticValue::Str{ref value} => {
                 vec![StmtBuilder::new().expr().build_mac(gen_mac("_tredgen_match_str", vec![
                     &|e| e.id("_pos"),
                     &|e| e.id("_text"),
@@ -106,7 +182,7 @@ impl Value {
                     &|e| e.str(&value[..]),
                 ]))]
             },
-            &Value::Regex{ref id} => {
+            &StaticValue::Regex{ref id} => {
                 vec![StmtBuilder::new().expr().build_mac(gen_mac("_tredgen_match_regex", vec![
                     &|e| e.id("_pos"),
                     &|e| e.id("_text"),
@@ -114,9 +190,10 @@ impl Value {
                     &|e| e.field(id).id("_parse"),
                 ]))]
             },
-            _ => vec![], // TODO
+            &StaticValue::Block{ref index} => {
+                vec![] // TODO
+            }
         }
-        // TODO
     }
 }
 
@@ -128,21 +205,22 @@ struct CaptureDat {
 }
 
 impl CaptureDat {
-    pub fn start(dat: &mut BlockDat) -> (Vec<ast::Stmt>, CaptureDat) {
+    pub fn start(vars: &Fn() -> String, code: &mut Vec<ast::Stmt>) -> CaptureDat {
         let dat = CaptureDat {
             acc_name: None,
-            start_name: dat.next_var(),
+            start_name: vars(),
             is_ended: false,
         };
-        let init = vec![
-            StmtBuilder::new().let_()
-                .mut_id(&dat.start_name)
-                .ty().usize()
-                .build()];
-        (init, dat)
+
+        code.push(StmtBuilder::new().let_()
+            .mut_id(&dat.start_name)
+            .ty().usize()
+            .build());
+
+        dat
     }
 
-    pub fn gen_start(&mut self, dat: &mut BlockDat) -> Vec<ast::Stmt> {
+    pub fn gen_start(&mut self) -> Vec<ast::Stmt> {
         self.is_ended = false;
 
         vec![StmtBuilder::new().expr().assign()
@@ -150,10 +228,10 @@ impl CaptureDat {
             .id("_pos")]
     }
 
-    pub fn gen_end(&mut self, dat: &mut BlockDat) -> Vec<ast::Stmt> {
+    pub fn gen_end(&mut self, vars: &Fn() -> String) -> Vec<ast::Stmt> {
         let push = self.acc_name.is_some();
 
-        if !push { self.acc_name = Some(dat.next_var()); }
+        if !push { self.acc_name = Some(vars()); }
         let name = self.acc_name.as_ref().unwrap();
 
         self.is_ended = true;
@@ -161,7 +239,7 @@ impl CaptureDat {
         if push {
             vec![StmtBuilder::new().expr().method_call("push_str")
                 .id(name)
-                .arg().index()
+                .arg().ref_().index()
                     .id("_text")
                     .range()
                         .from().id(&self.start_name)
@@ -172,13 +250,12 @@ impl CaptureDat {
         } else {
             vec![StmtBuilder::new().let_()
                 .mut_id(name)
-                .ty().usize()
                 .expr().call()
                     .path()
                         .global()
                         .ids(&["std", "string", "String", "from"])
                         .build()
-                    .arg().index()
+                    .arg().ref_().index()
                         .id("_text")
                         .range()
                             .from().id(&self.start_name)
@@ -187,16 +264,61 @@ impl CaptureDat {
             ]
         }
     }
-}
 
-#[derive(Debug, Clone)]
-enum LocalVal {
-    Capture ( CaptureDat ),
-    IntoList {
-        vec_name: String,
-    },
-    IntoOnce {
-        let_name: String,
+    pub fn eval_ref(&self) -> P<ast::Expr> {
+        let expr = ExprBuilder::new();
+        match (self.is_ended, self.acc_name.is_some()) {
+            (false, true) => expr.ref_().index()
+                .paren().add()
+                    .method_call("clone")
+                        .id(self.acc_name.as_ref().unwrap())
+                        .build()
+                    .ref_().index()
+                        .id("_text")
+                        .range()
+                            .from().id(&self.start_name)
+                            .to().id("_pos")
+                .range().build(),
+            (true, true) => expr.ref_().index()
+                .id(self.acc_name.as_ref().unwrap())
+                .range().build(),
+            (false, false) => expr.ref_().index()
+                .id("_text")
+                .range()
+                    .from().id(&self.start_name)
+                    .to().id("_pos"),
+            _ => panic!("Illegal capture state")
+        }
+    }
+
+    pub fn eval_own(&self) -> P<ast::Expr> {
+        let expr = ExprBuilder::new();
+        match (self.is_ended, self.acc_name.is_some()) {
+            (false, true) => expr.add()
+                .method_call("clone")
+                    .id(self.acc_name.as_ref().unwrap())
+                    .build()
+                .index()
+                    .id("_text")
+                    .range()
+                        .from().id(&self.start_name)
+                        .to().id("_pos"),
+            (true, true) => expr.method_call("clone")
+                .id(self.acc_name.as_ref().unwrap())
+                .build(),
+            (false, false) => expr.call()
+                .path()
+                    .global()
+                    .ids(&["std", "string", "String", "from"])
+                    .build()
+                .arg().index()
+                    .id("_text")
+                    .range()
+                        .from().id(&self.start_name)
+                        .to().id("_pos")
+                .build(),
+            (true, false) => panic!("Illegal capture state")
+        }
     }
 }
 
@@ -237,10 +359,26 @@ fn compile_name_expr(dat: &mut CompileData, block: usize, op: &String, args: &Ve
             Vec::new()
         },
         "capture" => {
-            let err = format!("\"capture\" expr \"def <name>\" has invalid args: {:?}", args);
+            let err = format!("\"capture\" expr \"capture <name>\" has invalid args: {:?}", args);
 
             if let [box Item::Name(ref name)] = args[..] {
-                vec![] // TODO
+                let vars = block.var_gen();
+
+                match block.dyns.entry(name.clone()) {
+                    hash_map::Entry::Occupied(mut e) => {
+                        {if let &mut DynValue::Capture{dat: ref mut cap} = e.get_mut() {
+                            return cap.gen_start();
+                        }}
+                        panic!(format!("Can not use existing value {:?} for capture", e.get()));
+                    },
+                    hash_map::Entry::Vacant(mut e) => {
+                        let mut out = Vec::new();
+                        let mut cap = CaptureDat::start(vars.as_ref(), &mut out);
+                        out.append(&mut cap.gen_start());
+                        e.insert(DynValue::Capture{dat: cap});
+                        return out;
+                    }
+                }
             } else {
                 panic!(err); // TODO no panics
             }
@@ -252,7 +390,21 @@ fn compile_name_expr(dat: &mut CompileData, block: usize, op: &String, args: &Ve
             Vec::new()
         },
         "stop" => {
-            Vec::new()
+            let err = format!("\"stop\" expr \"stop <name>\" has invalid args: {:?}", args);
+
+            if let [box Item::Name(ref name)] = args[..] {
+                let vars = block.var_gen();
+                match block.dyns.get_mut(name) {
+                    Some(&mut DynValue::Capture{dat: ref mut cap}) => {
+                        return cap.gen_end(vars.as_ref());
+                    },
+                    // TODO
+                    Some(v) => panic!(format!("Can not stop value {:?}", v)),
+                    None => panic!(format!("No local value named {:?}", name)),
+                }
+            } else {
+                panic!(err); // TODO no panics
+            }
         },
         "some" => {
             Vec::new()
@@ -278,26 +430,16 @@ fn compile_name_expr(dat: &mut CompileData, block: usize, op: &String, args: &Ve
 }
  
 fn compile_expr(dat: &mut CompileData, block: usize, op: &Item, args: &Vec<Box<Item>>) -> Vec<ast::Stmt> {
-    if let Ok(val) = gen_value(dat, block, op) {
-        val.gen_match(&mut dat.blocks[block])
+    let mut out = Vec::new();
+
+    if let Ok(val) = gen_value(dat, block, op, &mut out) {
+        out.append(&mut val.gen_match(&mut dat.blocks[block]));
+        out
     } else if let &Item::Name(ref name) = op {
         compile_name_expr(dat, block, name, args)
     } else {
-        panic!(format!("{:?} is not a valid static value, local value, or operation", op))
+        panic!(format!("{:?} is not a matchable value or operation", op)) // TODO no panic
     }
-}
-
-fn get_static<'a>(dat: &'a CompileData, lowest_block: usize, id: &String) -> Option<&'a Value> {
-    let mut bl = lowest_block;
-    loop {
-        let block = &dat.blocks[bl];
-        if let Some(val) = block.statics.get(id) { return Some(val) }
-        else {
-            if let Some(parent) = block.parent { bl = parent; }
-            else { break; }
-        }
-    }
-    None
 }
 
 fn gen_mac(name: &str, exprs: Vec<&Fn(ExprBuilder) -> P<ast::Expr>>) ->  ast::Mac {
@@ -311,31 +453,28 @@ fn gen_mac(name: &str, exprs: Vec<&Fn(ExprBuilder) -> P<ast::Expr>>) ->  ast::Ma
     mac.build()
 }
 
-fn gen_value(dat: &mut CompileData, block: usize, value: &Item) -> Result<Value, String> {
+fn gen_value<'a>(dat: &'a mut CompileData, block: usize, from: &Item, prefix: &mut Vec<ast::Stmt>) -> Result<Value, String> {
     {
         let blockdat = &mut dat.blocks[block];
+        let vars = blockdat.var_gen();
 
-        match value {
+        match from {
             &Item::Name(ref id) => {
-                if let Some(l) = blockdat.locals.get(id) {
-                    return Ok(Value::Local(l.clone()));
+                if let Some(l) = blockdat.dyns.get(id) {
+                    return l.deref(vars.as_ref(), prefix);
                 }
             },
-            // TODO
-            _ => ()
+            _ => (),
         }
     }
 
-    {
-        let stat = gen_static_value(dat, block, value);
-        if stat.is_ok() { return stat; }
-    }
-
-    Err(format!("{:?} is not a static or local value", value))
+    let stat = gen_static_value(dat, block, from);
+    if stat.is_ok() { Ok(Value::Static(stat.unwrap())) }
+    else { Err(format!("{:?} is not a static or local value", from)) }
 }
 
-fn gen_static_value(dat: &mut CompileData, block: usize, value: &Item) -> Result<Value, String> {
-    match value {
+fn gen_static_value(dat: &mut CompileData, block: usize, from: &Item) -> Result<StaticValue, String> {
+    match from {
         // compile block and add to global functions
         &Item::Block(ref lines) => {
             let index = dat.blocks.len();
@@ -343,46 +482,23 @@ fn gen_static_value(dat: &mut CompileData, block: usize, value: &Item) -> Result
 
             dat.blocks[index].block = Some(compile_from_iter(dat, index, &lines[..]));
 
-            Ok(Value::Block{ index: index })
+            Ok(StaticValue::Block{ index: index })
         }
         // add to global regex list
         &Item::Regex(ref source) => {
             let id = format!("_regex_{}", dat.regexs.len());
             dat.regexs.push((id.clone(), source.clone()));
 
-            Ok(Value::Regex{ id: id })
+            Ok(StaticValue::Regex{ id: id })
         }
         // string literal
-        &Item::StrLiteral(ref value) => Ok(Value::StringLit{ value: value.clone() }),
+        &Item::StrLiteral(ref value) => Ok(StaticValue::Str{ value: value.clone() }),
         &Item::Name(ref id) => {
-            let ent = get_static(dat, block, id);
-            if let Some(val) = ent { Ok(val.clone()) }
+            if let Some(value) = dat.get_static(block, id) { Ok(value.clone()) }
             else { Err(format!("{} does not name a prior static value", id)) }
         },
-        _ => Err(format!("{:?} is not a static value", value))
+        _ => Err(format!("{:?} is not a static value", from))
     }
-}
-
-fn gen_capture_str(capture: &CaptureDat) -> ast::Expr {
-    let expr = ExprBuilder::new();
-    match (capture.is_ended, capture.acc_name.is_some()) {
-        (false, true) => expr.add()
-            .method_call("clone")
-                .id(capture.acc_name.as_ref().unwrap())
-                .build()
-            .index()
-                .id("_text")
-                .range()
-                    .from().id(&capture.start_name)
-                    .to().id("_pos"),
-        (true, true) => expr.id(capture.acc_name.as_ref().unwrap()),
-        (false, false) => expr.index()
-            .id("_text")
-            .range()
-                .from().id(&capture.start_name)
-                .to().id("_pos"),
-        (true, false) => panic!("Illegal capture state")
-    }.unwrap()
 }
 
 fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) -> ast::Block {

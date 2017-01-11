@@ -1,0 +1,12 @@
+def Out str;
+
+into super;
+capture tc;
+/.{10}/;
+stop tc;
+"|";
+tc;
+capture tc;
+/\d+/;
+tc;
+export Out(tc);

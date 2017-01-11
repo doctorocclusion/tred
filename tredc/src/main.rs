@@ -32,7 +32,7 @@ lazy_static! {
 }
 
 fn main() {
-    let mut f = File::open("src/parse.trd").unwrap();
+    let mut f = File::open("../test.trd").unwrap();
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 

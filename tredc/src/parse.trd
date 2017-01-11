@@ -103,4 +103,4 @@ stat line_m {
 };
 
 into export;
-many line_m;
+all line_m;

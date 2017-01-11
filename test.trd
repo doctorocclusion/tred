@@ -1,6 +1,7 @@
 def Out str;
 
 into super;
+/\d+/;
 capture tc;
 /.{10}/;
 stop tc;

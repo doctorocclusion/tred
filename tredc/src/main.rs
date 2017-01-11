@@ -1,4 +1,4 @@
-#![feature(box_syntax, box_patterns, slice_patterns)]
+#![feature(box_syntax, box_patterns, slice_patterns, range_contains)]
 
 extern crate core;
 
@@ -32,7 +32,7 @@ lazy_static! {
 }
 
 fn main() {
-    let mut f = File::open("../test.trd").unwrap();
+    let mut f = File::open("src/parse.trd").unwrap();
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 

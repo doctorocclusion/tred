@@ -14,10 +14,9 @@ use parse::{self, Parse, Item};
 
 use unescape::unescape;
 
-use std::collections::HashMap;
-use std::collections::hash_map;
+use std::collections::{hash_map, HashMap};
 use std::rc::Rc;
-use std::ops::Deref;
+use std::ops::{Deref, Range, FnMut};
 use std::sync::{Arc, atomic};
 
 use core::fmt::{self, Formatter, Debug};
@@ -44,21 +43,27 @@ impl SecNext {
     pub fn next(&self) -> usize {
         self.num.fetch_add(1, atomic::Ordering::Relaxed)
     }
+
+    pub fn next_name(&self, prefix: &str) -> String {
+        format!("{}{}", prefix, self.next())
+    }
 } 
 
 #[derive(Debug)]
 struct CompileData {
     pub defs: Vec<(String, Vec<DefPart>)>,
-    pub regexs: Vec<(String, String)>,
+    pub regexs: HashMap<String, usize>,
     pub blocks: Vec<BlockDat>,
+    pub vars: SecNext,
 }
 
 impl CompileData {
     pub fn new() -> CompileData {
         CompileData {
             defs: Vec::new(),
-            regexs: Vec::new(),
+            regexs: HashMap::new(),
             blocks: Vec::new(),
+            vars: SecNext::new(0),
         }
     }
 
@@ -81,8 +86,7 @@ struct BlockDat {
     pub parent: Option<usize>,
     pub statics: HashMap<String, StaticValue>,
     pub dyns: HashMap<String, DynValue>,
-    pub next_var: SecNext,
-    pub into_super: bool,
+    pub active_into: Vec<IntoRec>,
     pub block: Option<ast::Block>,
 }
 
@@ -100,19 +104,72 @@ impl BlockDat {
             parent: parent,
             statics: HashMap::new(),
             dyns: HashMap::new(),
-            next_var: SecNext::new(0),
-            into_super: false,
+            active_into: vec![IntoRec::Export],
             block: None,
         }
     }
 
-    pub fn next_var(&self) -> String {
-        format!("_v{}", self.next_var.next())
+    fn do_gen_append(&self, vars: &SecNext) -> P<ast::Block> {
+        let mut lines = BlockBuilder::new();
+        let only = self.active_into.len() == 1;
+
+        for i in &self.active_into {
+            if let Some(s) = i.append_part(only) { lines = lines.with_stmt(s); }
+        }
+
+        lines.build()
     }
 
-    pub fn var_gen(&self) -> Box<Fn() -> String> {
-        let gen = self.next_var.clone();
-        Box::new(move || format!("_v{}", gen.next()))
+    pub fn gen_append(&self, expr: ExprBuilder, vars: &SecNext) -> P<ast::Expr> {
+        expr.paren().closure().by_ref() 
+            .fn_decl()
+                .arg()
+                    .id("_vec")
+                    .ty().ref_().mut_().ty().path()
+                        .global()
+                        .id("std")
+                        .id("vec")
+                        .segment("Vec")
+                            .ty().id("Token")
+                            .build()
+                        .build()
+                .no_return()
+            .expr().build_block(self.do_gen_append(vars))
+    }
+}
+
+#[derive(Debug, Clone)]
+enum IntoRec {
+    List(String),
+    Once(String),
+    Export,
+}
+
+impl IntoRec {
+    pub fn append_part(&self, only: bool) -> Option<ast::Stmt> {
+        match *self {
+            IntoRec::Export => {
+                let build = StmtBuilder::new();
+                if only {
+                    Some(build.expr().method_call("append")
+                        .id("_out")
+                        .arg()
+                            .id("_vec")
+                        .build())
+
+                } else {
+                    Some(build.expr().method_call("extend")
+                        .id("_out")
+                        .arg()
+                            .method_call("iter")
+                                .id("_vec")
+                                .build()
+                        .build())
+
+                }
+            },
+            _ => None,
+        }
     }
 }
 
@@ -120,16 +177,15 @@ impl BlockDat {
 enum DynValue {
     Val (Value),
     Capture {dat: CaptureDat},
-    IntoList {vec_name: String},
-    IntoOnce {let_name: String},
+    IntoVal (IntoRec)
 }
 
 impl DynValue {
-    pub fn deref(&self, vars: &Fn() -> String, code: &mut Vec<ast::Stmt>) -> Result<Value, String> {
+    pub fn deref(&self, vars: &SecNext, code: &mut Vec<ast::Stmt>) -> Result<Value, String> {
         match self {
             &DynValue::Val(ref val) => Ok(val.clone()),
             &DynValue::Capture{dat: ref cap} => {
-                let name = vars();
+                let name = vars.next_name("_cap_");
                 code.push(StmtBuilder::new().let_()
                     .mut_id(&name)
                     .build_expr(cap.eval_ref()));
@@ -147,15 +203,14 @@ enum Value {
 }
 
 impl Value {
-    pub fn gen_match(&self, dat: &mut BlockDat) -> Vec<ast::Stmt> {
+    pub fn gen_match(&self, pre: &mut Vec<ast::Stmt>) -> P<ast::Expr> {
         match self {
-            &Value::Static(ref stat) => stat.gen_match(dat),
-            &Value::Str{ref var_name} => vec![StmtBuilder::new().expr().build_mac(gen_mac("_tredgen_match_str", vec![
-                &|e| e.id("_pos"),
-                &|e| e.id("_text"),
-                &|e| e.id("TODO_out"),
-                &|e| e.id(var_name),
-            ]))]
+            &Value::Static(ref stat) => stat.gen_match(pre),
+            &Value::Str{ref var_name} => ExprBuilder::new().build_mac(gen_mac("_tredgen_match_str", &mut [
+                &mut |e| e.id("_pos"),
+                &mut |e| e.id("_text"),
+                &mut |e| e.id(var_name),
+            ]))
         }
     }
 }
@@ -172,26 +227,24 @@ impl StaticValue {
         Value::Static(self)
     }
 
-    pub fn gen_match(&self, dat: &mut BlockDat) -> Vec<ast::Stmt> {
+    pub fn gen_match(&self, pre: &mut Vec<ast::Stmt>) -> P<ast::Expr> {
         match self {
             &StaticValue::Str{ref value} => {
-                vec![StmtBuilder::new().expr().build_mac(gen_mac("_tredgen_match_str", vec![
-                    &|e| e.id("_pos"),
-                    &|e| e.id("_text"),
-                    &|e| e.id("TODO_out"),
-                    &|e| e.str(&value[..]),
-                ]))]
+                ExprBuilder::new().build_mac(gen_mac("_tredgen_match_str", &mut [
+                    &mut |e| e.id("_pos"),
+                    &mut |e| e.id("_text"),
+                    &mut |e| e.str(&value[..]),
+                ]))
             },
             &StaticValue::Regex{ref id} => {
-                vec![StmtBuilder::new().expr().build_mac(gen_mac("_tredgen_match_regex", vec![
-                    &|e| e.id("_pos"),
-                    &|e| e.id("_text"),
-                    &|e| e.id("TODO_out"),
-                    &|e| e.field(id).id("_parse"),
-                ]))]
+                ExprBuilder::new().build_mac(gen_mac("_tredgen_match_regex", &mut [
+                    &mut |e| e.id("_pos"),
+                    &mut |e| e.id("_text"),
+                    &mut |e| e.id(id),
+                ]))
             },
             &StaticValue::Block{ref index} => {
-                vec![] // TODO
+                ExprBuilder::new().unit()
             }
         }
     }
@@ -205,10 +258,10 @@ struct CaptureDat {
 }
 
 impl CaptureDat {
-    pub fn start(vars: &Fn() -> String, code: &mut Vec<ast::Stmt>) -> CaptureDat {
+    pub fn start(vars: &SecNext, code: &mut Vec<ast::Stmt>) -> CaptureDat {
         let dat = CaptureDat {
             acc_name: None,
-            start_name: vars(),
+            start_name: vars.next_name("_start_"),
             is_ended: false,
         };
 
@@ -228,10 +281,10 @@ impl CaptureDat {
             .id("_pos")]
     }
 
-    pub fn gen_end(&mut self, vars: &Fn() -> String) -> Vec<ast::Stmt> {
+    pub fn gen_end(&mut self, vars: &SecNext) -> Vec<ast::Stmt> {
         let push = self.acc_name.is_some();
 
-        if !push { self.acc_name = Some(vars()); }
+        if !push { self.acc_name = Some(vars.next_name("_acc_")); }
         let name = self.acc_name.as_ref().unwrap();
 
         self.is_ended = true;
@@ -322,8 +375,67 @@ impl CaptureDat {
     }
 }
 
-fn compile_name_expr(dat: &mut CompileData, block: usize, op: &String, args: &Vec<Box<Item>>) -> Vec<ast::Stmt> {
-    let mut block = &mut dat.blocks[block];
+struct GenMatchExprBuilder<'a> {
+    pub val: &'a Value,
+}
+
+impl <'a> GenMatchExprBuilder<'a> {
+    pub fn new(val: &'a Value) -> GenMatchExprBuilder<'a> {
+        GenMatchExprBuilder {
+            val: val
+        }
+    }
+}
+
+fn gen_expr_vals(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args: &Vec<Box<Item>>) -> Vec<ast::Stmt> {
+    let err = format!("\"{}\" expr \"{} <value> [<value>...]\" has invalid args: {:?}", op, op, args);
+    let mut out = Vec::new();
+
+    if args.len() < 1 {
+        panic!(err); // TODO no panics
+    }
+
+    let vals: Vec<Value> = args.iter()
+        .map(|b| gen_value(dat, blocki, b.as_ref(), &mut out).expect(&err))
+        .collect();
+
+    let block = &dat.blocks[blocki];
+
+    let mut macargs: Vec<P<ast::Expr>> = vec![
+        ExprBuilder::new().id("_pos"),
+        ExprBuilder::new().id("_text"),
+        block.gen_append( ExprBuilder::new(), &dat.vars),
+    ];
+    macargs.extend(vals.into_iter().map(|v| v.gen_match(&mut out)));
+
+    out.push(StmtBuilder::new().expr().build_mac(gen_mac_direct(mac,macargs)));
+    out
+}
+
+fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args: &Vec<Box<Item>>) -> Vec<ast::Stmt> {
+    let err = format!("\"{}\" expr \"{} <value>\" has invalid args: {:?}", op, op, args);
+
+    if let [box ref val] = args[..] {
+        let mut out = Vec::new();
+        let val = gen_value(dat, blocki, val, &mut out).expect(&err);
+        let block = &dat.blocks[blocki];
+
+        let stmt = StmtBuilder::new().expr().build_mac(gen_mac(mac, &mut [
+            &mut |e| e.id("_pos"),
+            &mut |e| e.id("_text"),
+            &mut |e| block.gen_append(e, &dat.vars),
+            &mut |e| e.build(val.gen_match(&mut out)),
+        ]));
+        out.push(stmt);
+
+        out
+    } else {
+        panic!(err); // TODO no panics
+    }
+}
+
+fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &Vec<Box<Item>>) -> Vec<ast::Stmt> {
+    let vars = dat.vars.clone();
 
     match &op[..] {
         // def expression
@@ -356,13 +468,13 @@ fn compile_name_expr(dat: &mut CompileData, block: usize, op: &String, args: &Ve
         // stat expression (already handled)
         "stat" => Vec::new(),
         "not" => {
-            Vec::new()
+            gen_expr_val("_tredgen_not", "not", dat, blocki, args)
         },
         "capture" => {
             let err = format!("\"capture\" expr \"capture <name>\" has invalid args: {:?}", args);
+            let mut block = &mut dat.blocks[blocki];
 
             if let [box Item::Name(ref name)] = args[..] {
-                let vars = block.var_gen();
 
                 match block.dyns.entry(name.clone()) {
                     hash_map::Entry::Occupied(mut e) => {
@@ -371,9 +483,9 @@ fn compile_name_expr(dat: &mut CompileData, block: usize, op: &String, args: &Ve
                         }}
                         panic!(format!("Can not use existing value {:?} for capture", e.get()));
                     },
-                    hash_map::Entry::Vacant(mut e) => {
+                    hash_map::Entry::Vacant(e) => {
                         let mut out = Vec::new();
-                        let mut cap = CaptureDat::start(vars.as_ref(), &mut out);
+                        let mut cap = CaptureDat::start(&vars, &mut out);
                         out.append(&mut cap.gen_start());
                         e.insert(DynValue::Capture{dat: cap});
                         return out;
@@ -391,12 +503,12 @@ fn compile_name_expr(dat: &mut CompileData, block: usize, op: &String, args: &Ve
         },
         "stop" => {
             let err = format!("\"stop\" expr \"stop <name>\" has invalid args: {:?}", args);
+            let mut block = &mut dat.blocks[blocki];
 
             if let [box Item::Name(ref name)] = args[..] {
-                let vars = block.var_gen();
                 match block.dyns.get_mut(name) {
                     Some(&mut DynValue::Capture{dat: ref mut cap}) => {
-                        return cap.gen_end(vars.as_ref());
+                        return cap.gen_end(&vars);
                     },
                     // TODO
                     Some(v) => panic!(format!("Can not stop value {:?}", v)),
@@ -407,19 +519,19 @@ fn compile_name_expr(dat: &mut CompileData, block: usize, op: &String, args: &Ve
             }
         },
         "some" => {
-            Vec::new()
+            gen_expr_vals("_tredgen_some", "some", dat, blocki, args)
         },
         "many" => {
-            Vec::new()
+            gen_expr_vals("_tredgen_many", "many", dat, blocki, args)
         },
         "all" => {
-            Vec::new()
+            gen_expr_vals("_tredgen_all", "all", dat, blocki, args)
         },
         "option" => {
-            Vec::new()
+            gen_expr_vals("_tredgen_option", "option", dat, blocki, args)
         },
         "or" => {
-            Vec::new()
+            gen_expr_vals("_tredgen_or", "option", dat, blocki, args)
         },
         "export" => {
             Vec::new()
@@ -433,7 +545,13 @@ fn compile_expr(dat: &mut CompileData, block: usize, op: &Item, args: &Vec<Box<I
     let mut out = Vec::new();
 
     if let Ok(val) = gen_value(dat, block, op, &mut out) {
-        out.append(&mut val.gen_match(&mut dat.blocks[block]));
+        let stmt = StmtBuilder::new().expr().build_mac(gen_mac("_tredgen_append", &mut [
+            &mut |e| e.id("_pos"),
+            &mut |e| e.id("_text"),
+            &mut |e| dat.blocks[block].gen_append(e, &dat.vars),
+            &mut |e| e.try().build(val.gen_match(&mut out)),
+        ]));
+        out.push(stmt);
         out
     } else if let &Item::Name(ref name) = op {
         compile_name_expr(dat, block, name, args)
@@ -442,26 +560,30 @@ fn compile_expr(dat: &mut CompileData, block: usize, op: &Item, args: &Vec<Box<I
     }
 }
 
-fn gen_mac(name: &str, exprs: Vec<&Fn(ExprBuilder) -> P<ast::Expr>>) ->  ast::Mac {
+fn gen_mac_direct(name: &str, exprs: Vec<P<ast::Expr>>) ->  ast::Mac {
     let mut mac = MacBuilder::new().path().id(name).build();
     for e in exprs {
-        mac = 
-            mac.expr().build(e(ExprBuilder::new()))
-            .expr().id(",");
+        mac = mac.expr().build(e)
+        .expr().id(",");
 
     }
     mac.build()
 }
 
+fn gen_mac(name: &str, exprs: &mut [&mut FnMut(ExprBuilder) -> P<ast::Expr>]) ->  ast::Mac {
+    gen_mac_direct(name, exprs.iter_mut().map(|f| f(ExprBuilder::new())).collect())
+}
+
 fn gen_value<'a>(dat: &'a mut CompileData, block: usize, from: &Item, prefix: &mut Vec<ast::Stmt>) -> Result<Value, String> {
+    let vars = dat.vars.clone();
+
     {
         let blockdat = &mut dat.blocks[block];
-        let vars = blockdat.var_gen();
 
         match from {
             &Item::Name(ref id) => {
                 if let Some(l) = blockdat.dyns.get(id) {
-                    return l.deref(vars.as_ref(), prefix);
+                    return l.deref(&vars, prefix);
                 }
             },
             _ => (),
@@ -486,8 +608,8 @@ fn gen_static_value(dat: &mut CompileData, block: usize, from: &Item) -> Result<
         }
         // add to global regex list
         &Item::Regex(ref source) => {
-            let id = format!("_regex_{}", dat.regexs.len());
-            dat.regexs.push((id.clone(), source.clone()));
+            let index = dat.regexs.entry(source.clone()).or_insert(dat.vars.next());
+            let id = format!("_regex_{}", index);
 
             Ok(StaticValue::Regex{ id: id })
         }
@@ -521,6 +643,22 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
     }
 
     let mut code = BlockBuilder::new();
+    code = code.stmt().let_()
+        .mut_id("_pos")
+        .expr().id("_i_pos");
+    code = code.stmt().let_()
+        .mut_id("_text")
+        .expr().index().ref_()
+            .id("_i_text")
+            .range().build();
+        code = code.stmt().let_()
+        .mut_id("_out")
+        .expr().call()
+            .path()
+                .global()
+                .ids(&["std", "vec", "Vec", "new"])
+                .build()
+            .build();
 
     // actually compile
     for t in toks {

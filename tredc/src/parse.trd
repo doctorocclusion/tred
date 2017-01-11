@@ -29,9 +29,11 @@ stat tuple_m {
 
     into args;
     "(";
+    white_m;
     many {
         value_m;
     } blank_m;
+    white_m;
     ")";
 
     export Tuple(Name(name) args);

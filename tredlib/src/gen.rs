@@ -1,24 +1,26 @@
 #[macro_export]
 macro_rules! _tredgen_append {
     ($pos:ident, $text:ident, $out:expr, $res:ident) => {
-        $text = $res.0;
-        $pos = $res.1;
-        $out(&mut $res.2);
-    }
+        {
+            let __r = $res;
+            $text = __r.0;
+            $pos = __r.1;
+            if __r.2.is_some() { $out(&mut __r.2.as_mut().unwrap()); }
+        }
+    };
 }
 
 
 #[macro_export]
 macro_rules! _tredgen_match_str {
-    ($pos:ident, $text:ident, $out:expr, $x:expr) => {
+    ($pos:ident, $text:ident, $x:expr) => {
         {
-            let tmp = $x;
-            let len = tmp.len();
-            if $text.starts_with(tmp) {
-                $text = &$text[len..]; 
-                $pos += len;
+            let __tmp = $x;
+            let __len = tmp.len();
+            if $text.starts_with(__tmp) {
+                ::std::result::Result::Ok((&$text[__len..], $pos + __len, None))
             } else {
-                return Err(ParseErr{at: $pos});
+                ::std::result::Result::Err(::tredlib::ParseErr{at: $pos});
             }
         }
     };
@@ -26,59 +28,73 @@ macro_rules! _tredgen_match_str {
 
 #[macro_export]
 macro_rules! _tredgen_match_regex {
-    ($pos:ident, $text:ident, $out:expr, $x:expr) => {
+    ($pos:ident, $text:ident, $x:expr) => {
         {
-            if let Some((_, end)) = $x.find($text) {
-                $pos += end;
-                $text = &$text[end..];
+            if let ::std::option::Option::Some((_, end)) = $x.find($text) {
+                ::std::result::Result::Ok((&$text[end..], $pos + end, None))
             } else {
-                return Err(ParseErr{at: $pos});
+                ::std::result::Result::Err(::tredlib::ParseErr{at: $pos})
             }
         }
-    }
-}
-
-#[macro_export]
-macro_rules! _tredgen_capture {
-    ($pos:ident, $text:ident, $orig:ident, $out:expr, $x:expr) => {
-        {
-            let save = $pos;
-            $x;
-            String::from($orig[save..$pos])
-        }
-    }
+    };
 }
 
 #[macro_export]
 macro_rules! _tredgen_or {
     ($pos:ident, $text:ident, $out:expr, $x1:expr, $($x2:expr),*) => {
         {
-            if let Ok(mut res) = $x1 { 
-                _tredgen_append!($pos, $text, $out, res);
+            if let ::std::result::Result::Ok(__res) = $x1 { 
+                _tredgen_append!($pos, $text, $out, __res);
             } 
             $(
-                else if let Ok(mut res) = $x2 {
-                    _tredgen_append!($pos, $text, $out, res);
+                else if let ::std::result::Result::Ok(__res) = $x2 {
+                   _tredgen_append!($pos, $text, $out, __res);
                 }
             )*
-            else { return Err(ParseErr{at: $pos}); }
+            else { return ::std::result::Result::Err(::tredlib::ParseErr{at: $pos}); }
         }
     };
 }
 
 #[macro_export]
-macro_rules! _tredgen_many {
+macro_rules! _tredgen_not {
     ($pos:ident, $text:ident, $out:expr, $x:expr) => {
+        if let ::std::result::Result::Ok(_) = $x { 
+           return ::std::result::Result::Err(::tredlib::ParseErr{at: $pos});
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! _tredgen_option {
+    ($pos:ident, $text:ident, $out:expr, $x1:expr, $($x2:expr),*) => {
+        if let ::std::result::Result::Ok(mut __res) = $x1 {
+            _tredgen_append!($pos, $text, $out, __res);
+        }
+        $(else if let ::std::result::Result::Ok(mut __res) = $x2 {
+            _tredgen_append!($pos, $text, $out, __res);
+        })*
+    };
+}
+
+#[macro_export]
+macro_rules! _tredgen_many {
+    ($pos:ident, $text:ident, $out:expr, $x1:expr, $($x1:expr),*) => {
         {
-            let mut mark = false;
+            let mut __mark = false;
             loop {
-                if let Ok(mut res) = $x {
-                    mark = true;
-                    _tredgen_append!($pos, $text, $out, res);
+                if let ::std::result::Result::Ok(mut __res) = $x1 {
+                    _tredgen_append!($pos, $text, $out, __res);
                 } else {
-                    if !mark { return Err(ParseErr{at: $pos}); }
+                    if !__mark { return ::std::result::Result::Err(::tredlib::ParseErr{at: $pos}); }
                     else { break; }
                 }
+                __mark = true;
+                $(if let ::std::result::Result::Ok(mut __res) = $x2 {
+                    _tredgen_append!($pos, $text, $out, __res);
+                } else {
+                    break;
+                })*
             }
         }
     };
@@ -86,25 +102,25 @@ macro_rules! _tredgen_many {
 
 #[macro_export]
 macro_rules! _tredgen_some {
-    ($pos:ident, $text:ident, $out:expr, $x:expr) => {
+    ($pos:ident, $text:ident, $out:expr, $($x:expr),+) => {
         loop {
-            if let Ok(mut res) = $x {
-                _tredgen_append!($pos, $text, $out, res);
+            $(if let ::std::result::Result::Ok(mut __res) = $x {
+                _tredgen_append!($pos, $text, $out, __res);
             } else {
                 break; 
-            }
+            })+
         }
     };
 }
 
 #[macro_export]
 macro_rules! _tredgen_all {
-    ($pos:ident, $text:ident, $out:expr, $x:expr) => {
+    ($pos:ident, $text:ident, $out:expr, $($x:expr),+) => {
         while $text.len() > 0 {
-            match $x {
-                Ok(mut res) => _tredgen_append!($pos, $text, $out, res),
+            $(match $x {
+                Ok(mut __res) => _tredgen_append!($pos, $text, $out, __res),
                 e @ _ => return e;
-            }
+            })+
         }
     };
 }

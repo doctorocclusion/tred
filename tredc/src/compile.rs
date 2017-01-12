@@ -6,6 +6,7 @@ use aster::block::BlockBuilder;
 use aster::expr::ExprBuilder;
 use aster::stmt::StmtBuilder;
 use aster::mac::MacBuilder;
+use aster::item::ItemBuilder;
 
 use tredlib::{ParseErr};
 use tredlib::regex::{self};
@@ -88,7 +89,7 @@ struct BlockDat {
     pub statics: HashMap<String, StaticValue>,
     pub dyns: HashMap<String, DynValue>,
     pub active_into: Vec<IntoRec>,
-    pub block: Option<ast::Block>,
+    pub block: Option<P<ast::Block>>,
 }
 
 impl BlockDat {
@@ -202,7 +203,7 @@ impl Value {
         match self {
             &Value::Static(ref stat) => stat.gen_match(pre),
             &Value::Str{ref var_name} => ExprBuilder::new().build_mac(gen_mac("_tredgen_match_str", &mut [
-                &mut |e| e.id("_pos"),
+                &mut |e| e.id("_at"),
                 &mut |e| e.id("_text"),
                 &mut |e| e.id(var_name),
             ]))
@@ -226,14 +227,14 @@ impl StaticValue {
         match self {
             &StaticValue::Str{ref value} => {
                 ExprBuilder::new().build_mac(gen_mac("_tredgen_match_str", &mut [
-                    &mut |e| e.id("_pos"),
+                    &mut |e| e.id("_at"),
                     &mut |e| e.id("_text"),
                     &mut |e| e.str(&value[..]),
                 ]))
             },
             &StaticValue::Regex{ref id} => {
                 ExprBuilder::new().build_mac(gen_mac("_tredgen_match_regex", &mut [
-                    &mut |e| e.id("_pos"),
+                    &mut |e| e.id("_at"),
                     &mut |e| e.id("_text"),
                     &mut |e| e.id(id),
                 ]))
@@ -273,7 +274,7 @@ impl CaptureDat {
 
         vec![StmtBuilder::new().expr().assign()
             .id(&self.start_name)
-            .id("_pos")]
+            .id("_at")]
     }
 
     pub fn gen_end(&mut self, vars: &SecNext) -> Vec<ast::Stmt> {
@@ -291,7 +292,7 @@ impl CaptureDat {
                     .id("_text")
                     .range()
                         .from().id(&self.start_name)
-                        .to().id("_pos")
+                        .to().id("_at")
                 .build()
             ]
 
@@ -307,7 +308,7 @@ impl CaptureDat {
                         .id("_text")
                         .range()
                             .from().id(&self.start_name)
-                            .to().id("_pos")
+                            .to().id("_at")
                     .build()
             ]
         }
@@ -325,7 +326,7 @@ impl CaptureDat {
                         .id("_text")
                         .range()
                             .from().id(&self.start_name)
-                            .to().id("_pos")
+                            .to().id("_at")
                 .range().build(),
             (true, true) => expr.ref_().index()
                 .id(self.acc_name.as_ref().unwrap())
@@ -334,7 +335,7 @@ impl CaptureDat {
                 .id("_text")
                 .range()
                     .from().id(&self.start_name)
-                    .to().id("_pos"),
+                    .to().id("_at"),
             _ => panic!("Illegal capture state")
         }
     }
@@ -350,7 +351,7 @@ impl CaptureDat {
                     .id("_text")
                     .range()
                         .from().id(&self.start_name)
-                        .to().id("_pos"),
+                        .to().id("_at"),
             (true, true) => expr.method_call("clone")
                 .id(self.acc_name.as_ref().unwrap())
                 .build(),
@@ -363,7 +364,7 @@ impl CaptureDat {
                     .id("_text")
                     .range()
                         .from().id(&self.start_name)
-                        .to().id("_pos")
+                        .to().id("_at")
                 .build(),
             (true, false) => panic!("Illegal capture state")
         }
@@ -397,7 +398,7 @@ fn gen_expr_vals(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args
     let block = &dat.blocks[blocki];
 
     let mut macargs: Vec<P<ast::Expr>> = vec![
-        ExprBuilder::new().id("_pos"),
+        ExprBuilder::new().id("_at"),
         ExprBuilder::new().id("_text"),
         block.gen_append( ExprBuilder::new(), &dat.vars),
     ];
@@ -416,7 +417,7 @@ fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args:
         let block = &dat.blocks[blocki];
 
         let stmt = StmtBuilder::new().expr().build_mac(gen_mac(mac, &mut [
-            &mut |e| e.id("_pos"),
+            &mut |e| e.id("_at"),
             &mut |e| e.id("_text"),
             &mut |e| block.gen_append(e, &dat.vars),
             &mut |e| e.build(val.gen_match(&mut out)),
@@ -541,7 +542,7 @@ fn compile_expr(dat: &mut CompileData, block: usize, op: &Item, args: &Vec<Box<I
 
     if let Ok(val) = gen_value(dat, block, op, &mut out) {
         let stmt = StmtBuilder::new().expr().build_mac(gen_mac("_tredgen_append", &mut [
-            &mut |e| e.id("_pos"),
+            &mut |e| e.id("_at"),
             &mut |e| e.id("_text"),
             &mut |e| dat.blocks[block].gen_append(e, &dat.vars),
             &mut |e| e.try().build(val.gen_match(&mut out)),
@@ -637,7 +638,7 @@ fn gen_static_value_delayed<'a, 'b>(dat: &'b mut CompileData, block: usize, from
     }
 }
 
-fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) -> ast::Block {
+fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) -> P<ast::Block> {
     let mut later = Vec::new();
 
     // find and compile statics
@@ -663,21 +664,16 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
 
     let mut code = BlockBuilder::new();
     code = code.stmt().let_()
-        .mut_id("_pos")
-        .expr().id("_i_pos");
+        .mut_id("_at")
+        .expr().id("_start");
     code = code.stmt().let_()
-        .mut_id("_text")
-        .expr().index().ref_()
-            .id("_i_text")
-            .range().build();
-        code = code.stmt().let_()
-        .mut_id("_out")
-        .expr().call()
-            .path()
-                .global()
-                .ids(&["std", "vec", "Vec", "new"])
-                .build()
-            .build();
+    .mut_id("_out")
+    .expr().call()
+        .path()
+            .global()
+            .ids(&["std", "vec", "Vec", "new"])
+            .build()
+        .build();
 
     // actually compile
     for t in toks {
@@ -689,7 +685,7 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
         }
     }
 
-    code.build().unwrap()
+    code.build()
 }
 
 pub fn compile(toks: &[Box<Item>]) {
@@ -697,10 +693,41 @@ pub fn compile(toks: &[Box<Item>]) {
     dat.blocks.push(BlockDat::new(0, None));
     dat.blocks[0].block = Some(compile_from_iter(&mut dat, 0, toks));
 
-    println!("{:?}", dat);
+    let mut fns: Vec<P<ast::Item>> = Vec::new();
 
     for b in dat.blocks {
-        println!("\n========\n{}", syntax::print::pprust::block_to_string(&b.block.unwrap()));
+        fns.push(ItemBuilder::new().fn_(b.id)
+            .arg()
+                .id("_start")
+                .ty().usize()
+            .arg()
+                .id("_text")
+                .ty().ref_()
+                    .ty().id("str")
+            .return_()
+                .result()
+                    .tuple()
+                        .ty().usize()
+                        .ty().path()
+                            .global()
+                            .id("std")
+                            .id("vec")
+                            .segment("Vec")
+                                .ty().id("Token")
+                                .build()
+                            .build()
+                        .build()
+                    .path()
+                        .global()
+                        .id("tredlib")
+                        .id("ParseErr")
+            .build()
+            .build(b.block.unwrap())
+            )
+    }
+
+    for f in fns {
+        println!("{}", syntax::print::pprust::item_to_string(f.deref()));
     }
     // TODO enums, funcs, and final output
 }

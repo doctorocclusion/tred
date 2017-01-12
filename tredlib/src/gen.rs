@@ -1,8 +1,8 @@
 #[macro_export]
 macro_rules! _tredgen_append {
-    ($pos:ident, $out:expr, $res:ident) => {
+    ($pos:ident, $out:expr, $x:expr) => {
         {
-            let __r = $res;
+            let __r = $x;
             $pos = __r.0;
             $out(&mut __r.1);
         }

@@ -568,9 +568,11 @@ fn compile_expr(dat: &mut CompileData, block: usize, op: &Item, args: &Vec<Box<I
 
 fn gen_mac_direct(name: &str, exprs: Vec<P<ast::Expr>>) ->  ast::Mac {
     let mut mac = MacBuilder::new().path().id(name).build();
+    let mut first = true;
     for e in exprs {
-        mac = mac.expr().build(e)
-        .expr().id(",");
+        if !first { mac = mac.expr().id(","); }
+        else { first = false; }
+        mac = mac.expr().build(e);
 
     }
     mac.build()
@@ -724,6 +726,63 @@ pub fn compile(toks: &[Box<Item>]) {
     }
     items.push(tokenum.build());
 
+    let mainfn = ItemBuilder::new().pub_().fn_("parse")
+        .arg()
+            .id("input")
+            .ty().ref_().ty().id("str")
+        .return_()
+            .result()
+                .path()
+                    .global()
+                    .id("std")
+                    .id("vec")
+                    .segment("Vec")
+                        .ty().id("Token")
+                        .build()
+                    .build()
+                .path()
+                    .global()
+                    .id("tredlib")
+                    .id("ParseErr")
+        .build().block()
+        .stmt().expr().match_()
+            .call()
+                .id(&dat.blocks[0].id)
+                .arg().usize(0)
+                .arg().id("input")
+                .build()
+            .arm()
+                .pat().ok().tuple()
+                    .pat().wild()
+                    .pat().id("tree")
+                    .build()
+                .body().ok().id("tree")
+            .arm()
+                .pat().id("err")
+                .body().id("err")
+            .build()
+        .build();
+    items.push(mainfn);
+
+    let mut regexmac = ItemBuilder::new().mac().path().id("lazy_static").build();
+    for (source, index) in dat.regexs.iter() {
+        regexmac = regexmac
+        .expr().id("static")
+        .expr().id("ref")
+        .expr().assign()
+            .type_()
+                .id(format!("_regex_{}", index))
+                .path().global().ids(&["regex", "Regex"]).build()
+            .method_call("unwrap")
+                .call()
+                    .path().global().ids(&["regex", "Regex", "new"]).build()
+                    .arg().str(&source[..])
+                    .build()
+                .build()
+        .expr().id(";");
+    }
+    items.push(regexmac.build());
+
     for b in dat.blocks {
         items.push(ItemBuilder::new().fn_(b.id)
             .arg()
@@ -751,8 +810,7 @@ pub fn compile(toks: &[Box<Item>]) {
                         .id("tredlib")
                         .id("ParseErr")
             .build()
-            .build(b.block.unwrap())
-            )
+        .build(b.block.unwrap()))
     }
 
     for f in items {

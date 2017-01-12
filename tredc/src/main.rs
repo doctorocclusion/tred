@@ -1,4 +1,4 @@
-#![feature(box_syntax, box_patterns, slice_patterns, range_contains)]
+#![feature(box_syntax, box_patterns, slice_patterns)]
 
 extern crate core;
 
@@ -7,13 +7,13 @@ extern crate aster;
 extern crate syntax;
 #[cfg(not(feature = "nightly"))]
 extern crate syntex_syntax as syntax;
-
-#[macro_use]
-extern crate lazy_static;
 extern crate unescape;
 
 #[macro_use]
 extern crate tredlib;
+
+#[macro_use]
+pub extern crate lazy_static;
 
 mod parse;
 mod compile;

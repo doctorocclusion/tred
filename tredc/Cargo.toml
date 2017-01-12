@@ -11,5 +11,5 @@ nightly = []
 tredlib = { path = "../tredlib" }
 aster = { version = "*", default_features = false }
 syntex_syntax = { version = "*", optional = true }
-lazy_static = "0.2.2"
 unescape = "0.1.0"
+lazy_static = "0.2.2"

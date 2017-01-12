@@ -1,0 +1,96 @@
+flags m0 m1 m2 m3 m4 m5 m6 m7;
+flags ptr;
+flags delta store;
+
+stat syncm {
+	sync m0;
+	sync m1;
+	sync m2;
+	sync m3;
+	sync m4;
+	sync m5;
+	sync m6;
+	sync m7;
+};
+
+stat apply {
+	ieq ptr 0 { add m0 delta; };
+	ieq ptr 1 { add m1 delta; };
+	ieq ptr 2 { add m2 delta; };
+	ieq ptr 3 { add m3 delta; };
+	ieq ptr 4 { add m4 delta; };
+	ieq ptr 5 { add m5 delta; };
+	ieq ptr 6 { add m6 delta; };
+	ieq ptr 7 { add m7 delta; };
+};
+
+stat read {
+	ieq ptr 0 { set store m0; };
+	ieq ptr 1 { set store m1; };
+	ieq ptr 2 { set store m2; };
+	ieq ptr 3 { set store m3; };
+	ieq ptr 4 { set store m4; };
+	ieq ptr 5 { set store m5; };
+	ieq ptr 6 { set store m6; };
+	ieq ptr 7 { set store m7; };
+};
+
+stat sum_inc {
+	or { 
+		"+";
+		add delta 1;
+	} {
+		"-";
+		add delta -1;
+	};
+	apply;
+};
+
+
+stat sum_mov {
+	or { 
+		">";
+		add ptr 1;
+	} {
+		"<";
+		add ptr -1;
+	};
+};
+
+stat block {
+	"[";
+	capture in;
+	some /./;
+	end in;
+	"]";
+	against in { option {
+		read;
+		mnq store 0;
+
+		some {
+			option {
+				some interp;
+				syncm;
+				meq 0 1;
+			};
+
+			read;
+			meq store 0;
+		};
+	}; };
+};
+
+stat interp {
+	or block sum_inc sum_mov;
+};
+
+some interp;
+
+meq 0 0;
+meq 1 0;
+meq 2 0;
+meq 3 0;
+meq 4 0;
+meq 5 0;
+meq 6 0;
+meq 7 0;

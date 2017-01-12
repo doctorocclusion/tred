@@ -80,6 +80,7 @@ impl CompileData {
     }
 }
 
+#[derive(Debug)]
 struct BlockDat {
     pub id: String,
     pub index: usize,
@@ -88,12 +89,6 @@ struct BlockDat {
     pub dyns: HashMap<String, DynValue>,
     pub active_into: Vec<IntoRec>,
     pub block: Option<ast::Block>,
-}
-
-impl Debug for BlockDat {
-    fn fmt(&self, fmt: &mut Formatter) -> Result<(), fmt::Error> {
-        fmt.write_str(&format!("BlockDat {{ id: \"{}\", parent: {:?}, statics: {:?} }}", self.id, self.index, self.statics))
-    }
 }
 
 impl BlockDat {
@@ -596,27 +591,46 @@ fn gen_value<'a>(dat: &'a mut CompileData, block: usize, from: &Item, prefix: &m
 }
 
 fn gen_static_value(dat: &mut CompileData, block: usize, from: &Item) -> Result<StaticValue, String> {
+    let (d, v) = gen_static_value_delayed(dat, block, from)?;
+    if let Some(d) = d { d.run(dat); }
+    Ok(v)
+}
+
+struct DelayedCompile<'a> {
+    block: usize,
+    from: &'a [Box<Item>],
+}
+
+impl<'a> DelayedCompile<'a> {
+    pub fn run(self, dat: &'a mut CompileData) {
+        dat.blocks[self.block].block = Some(compile_from_iter(dat, self.block, self.from));
+    }
+}
+
+fn gen_static_value_delayed<'a, 'b>(dat: &'b mut CompileData, block: usize, from: &'a Item) -> Result<(Option<DelayedCompile<'a>>, StaticValue), String> {
     match from {
         // compile block and add to global functions
         &Item::Block(ref lines) => {
             let index = dat.blocks.len();
             dat.blocks.push(BlockDat::new(index, Some(block)));
 
-            dat.blocks[index].block = Some(compile_from_iter(dat, index, &lines[..]));
-
-            Ok(StaticValue::Block{ index: index })
+            Ok((Some(DelayedCompile {
+                block: index,
+                from: &lines[..],
+            }),
+            StaticValue::Block{ index: index }))
         }
         // add to global regex list
         &Item::Regex(ref source) => {
             let index = dat.regexs.entry(source.clone()).or_insert(dat.vars.next());
             let id = format!("_regex_{}", index);
 
-            Ok(StaticValue::Regex{ id: id })
+            Ok((None, StaticValue::Regex{ id: id }))
         }
         // string literal
-        &Item::StrLiteral(ref value) => Ok(StaticValue::Str{ value: value.clone() }),
+        &Item::StrLiteral(ref value) => Ok((None, StaticValue::Str{ value: value.clone() })),
         &Item::Name(ref id) => {
-            if let Some(value) = dat.get_static(block, id) { Ok(value.clone()) }
+            if let Some(value) = dat.get_static(block, id) { Ok((None, value.clone())) }
             else { Err(format!("{} does not name a prior static value", id)) }
         },
         _ => Err(format!("{:?} is not a static value", from))
@@ -624,6 +638,8 @@ fn gen_static_value(dat: &mut CompileData, block: usize, from: &Item) -> Result<
 }
 
 fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) -> ast::Block {
+    let mut later = Vec::new();
+
     // find and compile statics
     for i in toks {
         match i {
@@ -632,7 +648,8 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
 
                 // check name and value
                 if let [box Item::Name(ref name), box ref value] = args[..] {
-                    let v = gen_static_value(dat, block, value).unwrap();
+                    let (d, v) = gen_static_value_delayed(dat, block, value).unwrap();
+                    if let Some(d) = d { later.push(d); }
                     dat.blocks[block].statics.insert(name.clone(), v);  // TODO no unwraps
                 } else {
                     panic!(format!("\"stat\" expr \"stat <name> <value>\" has invalid args: {:?}", args))
@@ -641,6 +658,8 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
             _ => ()
         }
     }
+
+    for d in later { d.run(dat); }
 
     let mut code = BlockBuilder::new();
     code = code.stmt().let_()

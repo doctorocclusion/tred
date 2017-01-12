@@ -80,12 +80,10 @@ stat v_number {
 };
 
 stat v_other {
-	into export;
 	or { "true"; export True(); } { "false"; export False(); } { "null"; export Null(); };
 };
 
 stat value {
-	into export;
 	or v_string v_map v_array v_other v_number;
 };
 

@@ -7,6 +7,7 @@ use aster::expr::ExprBuilder;
 use aster::stmt::StmtBuilder;
 use aster::mac::MacBuilder;
 use aster::item::ItemBuilder;
+use aster::ty::TyBuilder;
 
 use tredlib::{ParseErr};
 use tredlib::regex::{self};
@@ -27,6 +28,24 @@ enum DefPart {
     STR,
     ITEM,
     LIST,
+}
+
+impl DefPart {
+    pub fn ty(&self) -> P<ast::Ty> {
+        let ty = TyBuilder::new();
+        match self {
+            &DefPart::STR => ty.path().ids(&["std", "string", "String"]).build(),
+            &DefPart::ITEM => ty.option().id("Token"),
+            &DefPart::LIST => ty.path()
+                .global()
+                .id("std")
+                .id("vec")
+                .segment("Vec")
+                    .ty().id("Token")
+                    .build()
+                .build()
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -240,7 +259,11 @@ impl StaticValue {
                 ]))
             },
             &StaticValue::Block{ref index} => {
-                ExprBuilder::new().unit()
+                ExprBuilder::new().call()
+                    .id(format!("_blockfn_{}", index))
+                    .arg().id("_at")
+                    .arg().id("_text")
+                    .build()
             }
         }
     }
@@ -367,18 +390,6 @@ impl CaptureDat {
                         .to().id("_at")
                 .build(),
             (true, false) => panic!("Illegal capture state")
-        }
-    }
-}
-
-struct GenMatchExprBuilder<'a> {
-    pub val: &'a Value,
-}
-
-impl <'a> GenMatchExprBuilder<'a> {
-    pub fn new(val: &'a Value) -> GenMatchExprBuilder<'a> {
-        GenMatchExprBuilder {
-            val: val
         }
     }
 }
@@ -543,7 +554,6 @@ fn compile_expr(dat: &mut CompileData, block: usize, op: &Item, args: &Vec<Box<I
     if let Ok(val) = gen_value(dat, block, op, &mut out) {
         let stmt = StmtBuilder::new().expr().build_mac(gen_mac("_tredgen_append", &mut [
             &mut |e| e.id("_at"),
-            &mut |e| e.id("_text"),
             &mut |e| dat.blocks[block].gen_append(e, &dat.vars),
             &mut |e| e.try().build(val.gen_match(&mut out)),
         ]));
@@ -685,6 +695,12 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
         }
     }
 
+    code = code.stmt().expr().ok()
+    .tuple()
+        .expr().id("_at")
+        .expr().id("_out")
+        .build();
+
     code.build()
 }
 
@@ -693,10 +709,23 @@ pub fn compile(toks: &[Box<Item>]) {
     dat.blocks.push(BlockDat::new(0, None));
     dat.blocks[0].block = Some(compile_from_iter(&mut dat, 0, toks));
 
-    let mut fns: Vec<P<ast::Item>> = Vec::new();
+    let mut items: Vec<P<ast::Item>> = Vec::new();
+
+    let mut tokenum = ItemBuilder::new().pub_().enum_("Token");
+    for (id, parts) in dat.defs {
+        tokenum =  if let Some((first, rest)) = parts.split_first() {
+            let mut vs = tokenum.tuple(id)
+                .build_ty(first.ty());
+            for p in rest { vs = vs.with_ty(p.ty()); }
+            vs.build()
+        } else {
+            tokenum.id(id)
+        }
+    }
+    items.push(tokenum.build());
 
     for b in dat.blocks {
-        fns.push(ItemBuilder::new().fn_(b.id)
+        items.push(ItemBuilder::new().fn_(b.id)
             .arg()
                 .id("_start")
                 .ty().usize()
@@ -726,7 +755,7 @@ pub fn compile(toks: &[Box<Item>]) {
             )
     }
 
-    for f in fns {
+    for f in items {
         println!("{}", syntax::print::pprust::item_to_string(f.deref()));
     }
     // TODO enums, funcs, and final output

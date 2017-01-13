@@ -53,7 +53,7 @@ impl Parse {
             name_regex: Regex::new(r"^[\w_]+").unwrap(),
             comment_regex_1: Regex::new(r"^\s*").unwrap(),
             comment_regex_2: Regex::new(r"^[^\n]*").unwrap(),
-            strlit_regex: Regex::new("^[^\"]+").unwrap(),
+            strlit_regex: Regex::new("^([^\"\\\\]|\\\\.)*").unwrap(),
             regex_regex: Regex::new("^[^/]+").unwrap()
         }
     }
@@ -67,7 +67,7 @@ fn block_blank_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result
         at += end;
         text = &text[end..];
     } else {
-        return Err(ParseErr{at: at + pos});
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
     }
 
     Ok((text, at, vec![]))
@@ -81,7 +81,7 @@ fn block_white_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result
         at += end;
         text = &text[end..];
     } else {
-        return Err(ParseErr{at: at + pos});
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
     }
 
     Ok((text, at, vec![]))
@@ -91,7 +91,7 @@ fn block_comment_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Resu
     let mut at = 0;
     let mut text = input;
     
-    if !text.starts_with("//") { return Err(ParseErr{at: at + pos}); }
+    if !text.starts_with("//") { return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); }
     at += 2;
     text = &text[2..];
 
@@ -99,7 +99,7 @@ fn block_comment_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Resu
         at += end;
         text = &text[end..];
     } else {
-        return Err(ParseErr{at: at + pos});
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
     }
 
     let cap_start = at;
@@ -108,7 +108,7 @@ fn block_comment_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Resu
         at += end;
         text = &text[end..];
     } else {
-        return Err(ParseErr{at: at + pos});
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
     }
 
     let out = vec![Box::new(Item::Comment(input[cap_start..at].to_string()))];
@@ -122,26 +122,28 @@ fn block_strlit_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Resul
 
     if !text.starts_with("\"") {
         //println!("String Start Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos}); 
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
     }
     at += 1;
     text = &text[1..];
     
     let cap_start = at;
 
+    let mut out = Vec::new();
+
     if let Some((_, end)) = parse.strlit_regex.find(text) {
+        //println!("{}", &text[..end]);
+        out.push(Box::new(Item::StrLiteral(text[..end].to_string())));
         at += end;
         text = &text[end..];
     } else {
         //println!("String Error: {:?}", at + pos);
-        return Err(ParseErr{at: at + pos});
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
     }
-
-    let out = vec![Box::new(Item::StrLiteral(input[cap_start..at].to_string()))];
 
     if !text.starts_with("\"") {
         //println!("String End Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos}); 
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
     }
     at += 1;
     text = &text[1..];
@@ -155,7 +157,7 @@ fn block_regex_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result
 
     if !text.starts_with("/") {
         //println!("Regex Start Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos}); 
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
     }
     at += 1;
     text = &text[1..];
@@ -167,14 +169,14 @@ fn block_regex_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result
         text = &text[end..];
     } else {
         //println!("Regex Error: {:?}", at + pos);
-        return Err(ParseErr{at: at + pos});
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
     }
 
     let out = vec![Box::new(Item::Regex(input[cap_start..at].to_string()))];
 
     if !text.starts_with("/") {
         //println!("Regex End Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos}); 
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
     }
     at += 1;
     text = &text[1..];
@@ -192,13 +194,13 @@ fn block_tuple_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result
         text = &text[end..];
     } else {
         //println!("Tuple Name Error: {:?}", at + pos);
-        return Err(ParseErr{at: at + pos});
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
     }
     let name = Box::new(Item::Name(input[cap_start..at].to_string()));
 
     if !text.starts_with("(") {
         //println!("Tuple Start Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos}); 
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
     }
     at += 1;
     text = &text[1..];
@@ -230,7 +232,7 @@ fn block_tuple_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result
 
     if !text.starts_with(")") {
         //println!("Tuple End Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos}); 
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
     }
     at += 1;
     text = &text[1..];
@@ -248,7 +250,7 @@ fn block_name_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<
         text = &text[end..];
     } else {
         //println!("Name Error: {:?}", at + pos);
-        return Err(ParseErr{at: at + pos});
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
     }
 
     let name = Box::new(Item::Name(input[cap_start..at].to_string()));
@@ -263,7 +265,7 @@ fn block_block_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result
 
     if !text.starts_with("{") {
         //println!("Block Start Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos}); 
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
     }
     at += 1;
     text = &text[1..];
@@ -282,7 +284,7 @@ fn block_block_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result
 
     if !text.starts_with("}") {
         //println!("Block End Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos}); 
+        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
     }
     at += 1;
     text = &text[1..];
@@ -296,7 +298,7 @@ fn block_value_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result
     if let Ok(res) = block_block_m(parse, input, pos) { return Ok(res); }
     if let Ok(res) = block_tuple_m(parse, input, pos) { return Ok(res); }
     if let Ok(res) = block_name_m(parse, input, pos) { return Ok(res); } 
-    Err(ParseErr{at: pos})
+    Err(ParseErr{at: pos, msg: None, cause: Vec::new()})
 }
 
 fn block_exp_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
@@ -350,7 +352,7 @@ fn block_exp_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(
         }
     }
 
-    if !text.starts_with(";") { return Err(ParseErr{at: at + pos}); }
+    if !text.starts_with(";") { return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); }
     at += 1;
     text = &text[1..];
 
@@ -361,7 +363,7 @@ fn block_line_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<
     if let Ok(res) = block_blank_m(parse, input, pos) { return Ok(res); }
     if let Ok(res) = block_comment_m(parse, input, pos) { return Ok(res); } 
     if let Ok(res) = block_exp_m(parse, input, pos) { return Ok(res); }
-    Err(ParseErr{at: pos})
+    Err(ParseErr{at: pos, msg: None, cause: Vec::new()})
 }
 
 fn block_main<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {

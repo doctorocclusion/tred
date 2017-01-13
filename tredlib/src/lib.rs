@@ -6,5 +6,7 @@ pub mod gen;
 
 #[derive(Debug)]
 pub struct ParseErr {
-    pub at: usize
+    pub at: usize,
+    pub msg: Option<String>,
+    pub cause: Vec<ParseErr>,
 }

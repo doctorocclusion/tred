@@ -247,7 +247,7 @@ impl StaticValue {
                 ExprBuilder::new().build_mac(gen_mac("_tredgen_match_str", &mut [
                     &mut |e| e.id("_at"),
                     &mut |e| e.id("_text"),
-                    &mut |e| e.str(&value[..]),
+                    &mut |e| e.str(&unescape(value).unwrap()[..]),
                 ]))
             },
             &StaticValue::Regex{ref id} => {
@@ -712,7 +712,12 @@ pub fn compile(toks: &[Box<Item>]) {
 
     let mut items: Vec<P<ast::Item>> = Vec::new();
 
-    let mut tokenum = ItemBuilder::new().pub_().enum_("Token");
+    let mut tokenum = ItemBuilder::new()
+    .attr()
+        .list("derive")
+        .words(&["Clone", "Debug"])
+        .build()
+    .pub_().enum_("Token");
     for (id, parts) in dat.defs {
         tokenum =  if let Some((first, rest)) = parts.split_first() {
             let mut vs = tokenum.tuple(id)
@@ -775,7 +780,7 @@ pub fn compile(toks: &[Box<Item>]) {
             .method_call("unwrap")
                 .call()
                     .path().global().ids(&["tredlib", "regex", "Regex", "new"]).build()
-                    .arg().str(&source[..])
+                    .arg().str(&(String::from("^") + &source[..])[..])
                     .build()
                 .build()
         .expr().id(";");

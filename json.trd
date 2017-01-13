@@ -12,8 +12,8 @@ stat white_m /[\s\n\r]*/;
 stat blank_m /[\s\n\r]+/;
 
 stat str_fill {
-	many {
-		or /[^\]/ {
+	some {
+		or /[^\\"]/ {
 			"\\";
 			or "\"" "\\" "/" "b" "n" "f" "n" "r" "t" /u[\da-fA-F]{6}/;
 		};
@@ -26,7 +26,7 @@ stat v_string {
 	str_fill;
 	export String(val);
 	"\"";
-}
+};
 
 stat map_entry {
 	"\"";
@@ -40,13 +40,13 @@ stat map_entry {
 	into_once val;
 	value;
 	export MapEntry(key val);
-}
+};
 
 stat v_map {
 	"{";
 	white_m;
 	into entries;
-	some map_entry { white_m; "," white_m; };
+	some map_entry { white_m; ","; white_m; };
 	export Map(entries);
 	white_m;
 	"}";
@@ -56,7 +56,7 @@ stat v_array {
 	"[";
 	white_m;
 	into values;
-	some value { white_m; "," white_m; };
+	some value { white_m; ","; white_m; };
 	export Array(values);
 	white_m;
 	"]";
@@ -65,10 +65,10 @@ stat v_array {
 stat v_number {
 	capture val;
 
-	// /-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?/
+	// /-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?/;
 
 	option "-";
-	or "0" { /1-9/; some /\d/; };
+	or "0" { /[1-9]/; some /\d/; };
 	option { "."; many /\d/; };
 	option {
 		or "e" "E";

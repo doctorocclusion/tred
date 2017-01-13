@@ -118,7 +118,7 @@ impl BlockDat {
             parent: parent,
             statics: HashMap::new(),
             dyns: HashMap::new(),
-            active_into: vec![IntoRec::Export],
+            active_into: Vec::new(),
             block: None,
         }
     }
@@ -152,37 +152,57 @@ impl BlockDat {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum IntoRec {
     List(String),
     Once(String),
-    Export,
 }
 
 impl IntoRec {
     pub fn append_part(&self, only: bool) -> Option<ast::Stmt> {
         match *self {
-            IntoRec::Export => {
+            IntoRec::Once(ref var) => {
+                let build = StmtBuilder::new();
+                if only {
+                    Some(build.expr().assign()
+                        .id(var)
+                        .method_call("or")
+                            .method_call("pop")
+                                .id("_vec")
+                                .build()
+                            .arg().id(var)
+                            .build())
+
+                } else {
+                    Some(build.expr().assign()
+                        .id(var)
+                        .method_call("or")
+                            .method_call("cloned")
+                                .method_call("last")
+                                    .id("_vec")
+                                    .build()
+                                .build()
+                            .arg().id(var)
+                            .build())
+                }
+            },
+            IntoRec::List(ref var) => {
                 let build = StmtBuilder::new();
                 if only {
                     Some(build.expr().method_call("append")
-                        .id("_out")
+                        .id(var)
                         .arg()
                             .id("_vec")
                         .build())
 
                 } else {
                     Some(build.expr().method_call("extend")
-                        .id("_out")
-                        .arg()
-                            .method_call("iter")
-                                .id("_vec")
-                                .build()
+                        .id(var)
+                        .arg().id("_vec")
                         .build())
 
                 }
-            },
-            _ => None,
+            }
         }
     }
 }
@@ -436,7 +456,7 @@ fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args:
 
         out
     } else {
-        panic!(err); // TODO no panics
+        panic!(err);
     }
 }
 
@@ -466,7 +486,7 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
                 // add def
                 dat.defs.push((name.clone(), parts));
             } else {
-                panic!(err); // TODO no panics
+                panic!(err);
             }
 
             Vec::new()
@@ -498,14 +518,71 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
                     }
                 }
             } else {
-                panic!(err); // TODO no panics
+                panic!(err);
             }
         },
         "into" => {
-            Vec::new()
+            let err = format!("\"into\" expr \"into <name>\" has invalid args: {:?}", args);
+            let mut block = &mut dat.blocks[blocki];
+
+            let name;
+            if let [box Item::Name(ref n)] = args[..] {
+                match block.dyns.get(n) {
+                    Some(&DynValue::IntoVal(ref rec @ IntoRec::List(_))) => {
+                        if block.active_into.contains(&rec) {
+                            panic!(format!("Already appending into \"{}\"", n));
+                        }
+                        block.active_into.push(rec.clone());
+                        return Vec::new();
+                    },
+                    Some(v @ _) => panic!(format!("Can not append into \"{}\", already has value: {:?}", n, v)),
+                    None => name = n,
+                }
+            } else {
+                panic!(err);
+            }
+
+            let id = vars.next_name("_intolist_");
+            let rec = IntoRec::List(id.clone());
+            block.active_into.push(rec.clone());
+            block.dyns.insert(name.clone(), DynValue::IntoVal(rec));
+            vec![StmtBuilder::new().let_()
+                .mut_id(&id)
+                .expr().call()
+                    .path()
+                        .global()
+                        .ids(&["std", "vec", "Vec", "new"])
+                        .build()
+                    .build()]
         },
         "into_once" => {
-            Vec::new()
+            let err = format!("\"into_once\" expr \"into_once <name>\" has invalid args: {:?}", args);
+            let mut block = &mut dat.blocks[blocki];
+
+            let name;
+            if let [box Item::Name(ref n)] = args[..] {
+                match block.dyns.get(n) {
+                    Some(&DynValue::IntoVal(ref rec @ IntoRec::Once(_))) => {
+                        if block.active_into.contains(&rec) {
+                            panic!(format!("Already assigning into \"{}\"", n));
+                        }
+                        block.active_into.push(rec.clone());
+                        return Vec::new();
+                    },
+                    Some(v @ _) => panic!(format!("Can not assign into \"{}\", already has value: {:?}", n, v)),
+                    None => name = n,
+                }
+            } else {
+                panic!(err);
+            }
+
+            let id = vars.next_name("_intolist_");
+            let rec = IntoRec::Once(id.clone());
+            block.active_into.push(rec.clone());
+            block.dyns.insert(name.clone(), DynValue::IntoVal(rec));
+            vec![StmtBuilder::new().let_()
+                .mut_id(&id)
+                .expr().none()]
         },
         "stop" => {
             let err = format!("\"stop\" expr \"stop <name>\" has invalid args: {:?}", args);
@@ -677,14 +754,6 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
     code = code.stmt().let_()
         .mut_id("_at")
         .expr().id("_start");
-    code = code.stmt().let_()
-    .mut_id("_out")
-    .expr().call()
-        .path()
-            .global()
-            .ids(&["std", "vec", "Vec", "new"])
-            .build()
-        .build();
 
     // actually compile
     for t in toks {
@@ -696,11 +765,34 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
         }
     }
 
-    code = code.stmt().expr().ok()
-    .tuple()
-        .expr().id("_at")
-        .expr().id("_out")
-        .build();
+    code = match dat.blocks[block].dyns.get("export") {
+        Some(&DynValue::IntoVal(IntoRec::List(ref id))) => code.stmt().expr().ok().tuple()
+            .expr().id("_at")
+            .expr().id(id)
+            .build(),
+        Some(&DynValue::IntoVal(IntoRec::Once(ref id))) => code.stmt().expr().ok().tuple()
+            .expr().id("_at")
+            .expr().call()
+                .path()
+                    .global()
+                    .ids(&["std", "vec", "Vec", "from_iter"])
+                    .build()
+                .arg().method_call("iter")
+                    .id(id)
+                    .build()
+                .build()
+            .build(),
+        Some(v @ _) => panic!(format!("Value {:?} is not valid for export", v)),
+        None => code.stmt().expr().ok().tuple()
+            .expr().id("_at")
+            .expr().call()
+                .path()
+                    .global()
+                    .ids(&["std", "vec", "Vec", "new"])
+                    .build()
+                .build()
+            .build(),
+    };
 
     code.build()
 }

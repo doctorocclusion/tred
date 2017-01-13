@@ -2,24 +2,24 @@
 macro_rules! _tredgen_append {
     ($pos:ident, $out:expr, $x:expr) => {
         {
-            let __r = $x;
+            let mut __r = $x;
             $pos = __r.0;
             $out(&mut __r.1);
         }
     };
 }
 
-
 #[macro_export]
 macro_rules! _tredgen_match_str {
     ($pos:ident, $text:ident, $x:expr) => {
         {
-            let __tmp = $x;
-            let __len = tmp.len();
+            let __tmp: &str = $x;
+            let __len: usize = __tmp.len();
             if (&$text[$pos..]).starts_with(__tmp) {
-                ::std::result::Result::Ok(($pos + __len, ::std::vec::Vec::new()))
+                let mut __empty : ::std::vec::Vec<::std::boxed::Box<Token>> = ::std::vec::Vec::new();
+                ::std::result::Result::Ok(($pos + __len, __empty))
             } else {
-                ::std::result::Result::Err(::tredlib::ParseErr{at: $pos});
+                ::std::result::Result::Err(::tredlib::ParseErr{at: $pos})
             }
         }
     };
@@ -40,7 +40,7 @@ macro_rules! _tredgen_match_regex {
 
 #[macro_export]
 macro_rules! _tredgen_or {
-    ($pos:ident, $text:ident, $out:expr, $x1:expr, $($x2:expr),*) => {
+    ($pos:ident, $text:ident, $out:expr, $x1:expr $(, $x2:expr)*) => {
         {
             if let ::std::result::Result::Ok(__res) = $x1 { 
                 _tredgen_append!($pos, $out, __res);
@@ -66,7 +66,7 @@ macro_rules! _tredgen_not {
 
 #[macro_export]
 macro_rules! _tredgen_option {
-    ($pos:ident, $text:ident, $out:expr, $x1:expr, $($x2:expr),*) => {
+    ($pos:ident, $text:ident, $out:expr, $x1:expr $(, $x2:expr)*) => {
         if let ::std::result::Result::Ok(mut __res) = $x1 {
             _tredgen_append!($pos, $out, __res);
         }
@@ -78,7 +78,7 @@ macro_rules! _tredgen_option {
 
 #[macro_export]
 macro_rules! _tredgen_many {
-    ($pos:ident, $text:ident, $out:expr, $x1:expr, $($x1:expr),*) => {
+    ($pos:ident, $text:ident, $out:expr, $x1:expr $(, $x2:expr)*) => {
         {
             let mut __mark = false;
             loop {
@@ -101,7 +101,7 @@ macro_rules! _tredgen_many {
 
 #[macro_export]
 macro_rules! _tredgen_some {
-    ($pos:ident, $text:ident, $out:expr, $($x:expr),+) => {
+    ($pos:ident, $text:ident, $out:expr $(, $x:expr)+) => {
         loop {
             $(if let ::std::result::Result::Ok(mut __res) = $x {
                 _tredgen_append!($pos, $out, __res);
@@ -114,11 +114,11 @@ macro_rules! _tredgen_some {
 
 #[macro_export]
 macro_rules! _tredgen_all {
-    ($pos:ident, $text:ident, $out:expr, $($x:expr),+) => {
-        while $text.len() > 0 {
+    ($pos:ident, $text:ident, $out:expr $(, $x:expr)+) => {
+        while $pos < $text.len() {
             $(match $x {
                 Ok(mut __res) => _tredgen_append!($pos, $out, __res),
-                e @ _ => return e;
+                __e @ _ => return __e,
             })+
         }
     };

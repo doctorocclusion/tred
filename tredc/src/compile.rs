@@ -1,5 +1,4 @@
 use syntax::{self, ast};
-use syntax::parse::token::{Token};
 use syntax::ptr::P;
 
 use aster::block::BlockBuilder;
@@ -34,14 +33,14 @@ impl DefPart {
     pub fn ty(&self) -> P<ast::Ty> {
         let ty = TyBuilder::new();
         match self {
-            &DefPart::STR => ty.path().ids(&["std", "string", "String"]).build(),
-            &DefPart::ITEM => ty.option().id("Token"),
+            &DefPart::STR => ty.path().global().ids(&["std", "string", "String"]).build(),
+            &DefPart::ITEM => ty.option().box_().id("Token"),
             &DefPart::LIST => ty.path()
                 .global()
                 .id("std")
                 .id("vec")
                 .segment("Vec")
-                    .ty().id("Token")
+                    .ty().box_().id("Token")
                     .build()
                 .build()
         }
@@ -145,10 +144,10 @@ impl BlockDat {
                         .id("std")
                         .id("vec")
                         .segment("Vec")
-                            .ty().id("Token")
+                            .ty().box_().id("Token")
                             .build()
                         .build()
-                .no_return()
+                .return_().unit()
             .expr().build_block(self.do_gen_append(vars))
     }
 }
@@ -737,7 +736,7 @@ pub fn compile(toks: &[Box<Item>]) {
                     .id("std")
                     .id("vec")
                     .segment("Vec")
-                        .ty().id("Token")
+                        .ty().box_().id("Token")
                         .build()
                     .build()
                 .path()
@@ -758,8 +757,8 @@ pub fn compile(toks: &[Box<Item>]) {
                     .build()
                 .body().ok().id("tree")
             .arm()
-                .pat().id("err")
-                .body().id("err")
+                .pat().err().id("err")
+                .body().err().id("err")
             .build()
         .build();
     items.push(mainfn);
@@ -772,10 +771,10 @@ pub fn compile(toks: &[Box<Item>]) {
         .expr().assign()
             .type_()
                 .id(format!("_regex_{}", index))
-                .path().global().ids(&["regex", "Regex"]).build()
+                .path().global().ids(&["tredlib", "regex", "Regex"]).build()
             .method_call("unwrap")
                 .call()
-                    .path().global().ids(&["regex", "Regex", "new"]).build()
+                    .path().global().ids(&["tredlib", "regex", "Regex", "new"]).build()
                     .arg().str(&source[..])
                     .build()
                 .build()
@@ -801,7 +800,7 @@ pub fn compile(toks: &[Box<Item>]) {
                             .id("std")
                             .id("vec")
                             .segment("Vec")
-                                .ty().id("Token")
+                                .ty().box_().id("Token")
                                 .build()
                             .build()
                         .build()

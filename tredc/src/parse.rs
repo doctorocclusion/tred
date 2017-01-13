@@ -345,7 +345,7 @@ fn block_exp_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(
             at += x.1;
             args.append(&mut x.2);
         } else {
-            println!("Exp End Error: {:?}", res);
+            //println!("Exp End Error: {:?}", res);
             return res; 
         }
     }
@@ -375,7 +375,7 @@ fn block_main<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&
             total += x.1;
             into.append(&mut x.2);
         } else { 
-            println!("Line Error: {:?}", res);
+            //println!("Line Error: {:?}", res);
             break;
         }
     }

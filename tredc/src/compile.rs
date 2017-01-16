@@ -11,7 +11,7 @@ use aster::ty::TyBuilder;
 use tredlib::{ParseErr};
 use tredlib::regex::{self};
 
-use parse::{self, Parse, Item};
+use newparse::{Token};
 
 use unescape::unescape;
 
@@ -492,7 +492,7 @@ impl CaptureDat {
     }
 }
 
-fn gen_expr_vals(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args: &Vec<Box<Item>>) -> Vec<ast::Stmt> {
+fn gen_expr_vals(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args: &Vec<Box<Token>>) -> Vec<ast::Stmt> {
     let err = format!("\"{}\" expr \"{} <value> [<value>...]\" has invalid args: {:?}", op, op, args);
     let mut out = Vec::new();
 
@@ -520,7 +520,7 @@ fn gen_expr_vals(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args
     out
 }
 
-fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args: &Vec<Box<Item>>) -> Vec<ast::Stmt> {
+fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args: &Vec<Box<Token>>) -> Vec<ast::Stmt> {
     let err = format!("\"{}\" expr \"{} <value>\" has invalid args: {:?}", op, op, args);
 
     if let [box ref val] = args[..] {
@@ -544,9 +544,9 @@ fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args:
     }
 }
 
-fn gen_token_output(dat: &CompileData, block: usize, def: DefPart, item: &Item) -> Result<P<ast::Expr>, String>  {
+fn gen_token_output(dat: &CompileData, block: usize, def: DefPart, item: &Token) -> Result<P<ast::Expr>, String>  {
     match (def, item) {
-        (DefPart::ITEM, &Item::Tuple(box Item::Name(ref name), ref parts)) => {
+        (DefPart::ITEM, &Token::Tuple(Some(box Token::Name(ref name)), ref parts)) => {
             let part_defs = dat.defs.get(name);
             if part_defs.is_none() { return Err(format!("{} is an unknown definition", name)); }
             let part_defs = part_defs.unwrap();
@@ -570,21 +570,21 @@ fn gen_token_output(dat: &CompileData, block: usize, def: DefPart, item: &Item) 
                     .path().ids(&["Token", name]).build())
             }
         },
-        (DefPart::ITEM, &Item::Name(ref name)) => {
+        (DefPart::ITEM, &Token::Name(ref name)) => {
             match dat.blocks[block].dyns.get(name) {
                 Some(&DynValue::IntoVal(ref into)) => Ok(into.as_opt(true)),
                 Some(v @ _) => Err(format!("{} ({:?}) is dynamic but has not received into or into_once", name, v)),
                 None => Err(format!("{} does not name a value", name)),
             }
         },
-        (DefPart::LIST, &Item::Name(ref name)) => {
+        (DefPart::LIST, &Token::Name(ref name)) => {
             match dat.blocks[block].dyns.get(name) {
                 Some(&DynValue::IntoVal(ref into)) => Ok(into.as_vec(true)),
                 Some(v @ _) => Err(format!("{} ({:?}) is dynamic but has not received into or into_once", name, v)),
                 None => Err(format!("{} does not name a value", name)),
             }
         },
-        (DefPart::STR, &Item::Name(ref name)) => {
+        (DefPart::STR, &Token::Name(ref name)) => {
             match dat.blocks[block].dyns.get(name) {
                 Some(&DynValue::Capture {dat: ref dat}) => Ok(dat.eval_own()),
                 Some(v @ _) => Err(format!("{} ({:?}) is dynamic but not a capture", name, v)),
@@ -597,14 +597,14 @@ fn gen_token_output(dat: &CompileData, block: usize, def: DefPart, item: &Item) 
 
 
         },
-        (DefPart::STR, &Item::StrLiteral(ref val)) => {
+        (DefPart::STR, &Token::StrLiteral(ref val)) => {
             Ok(ExprBuilder::new().str(&unescape(val).unwrap()[..]))
         },
         _ => Err(format!("{:?} is not a valid as a {:?} member", item, def))
     }
 }
 
-fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &Vec<Box<Item>>) -> Vec<ast::Stmt> {
+fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &Vec<Box<Token>>) -> Vec<ast::Stmt> {
     let vars = dat.vars.clone();
 
     match &op[..] {
@@ -619,7 +619,7 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
             let err = format!("\"capture\" expr \"capture <name>\" has invalid args: {:?}", args);
             let mut block = &mut dat.blocks[blocki];
 
-            if let [box Item::Name(ref name)] = args[..] {
+            if let [box Token::Name(ref name)] = args[..] {
 
                 match block.dyns.entry(name.clone()) {
                     hash_map::Entry::Occupied(mut e) => {
@@ -645,7 +645,7 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
             let mut block = &mut dat.blocks[blocki];
 
             let name;
-            if let [box Item::Name(ref n)] = args[..] {
+            if let [box Token::Name(ref n)] = args[..] {
                 match block.dyns.get(n) {
                     Some(&DynValue::IntoVal(ref rec @ IntoRec::List(_))) => {
                         if block.active_into.contains(&rec) {
@@ -682,7 +682,7 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
             let mut block = &mut dat.blocks[blocki];
 
             let name;
-            if let [box Item::Name(ref n)] = args[..] {
+            if let [box Token::Name(ref n)] = args[..] {
                 match block.dyns.get(n) {
                     Some(&DynValue::IntoVal(ref rec @ IntoRec::Once(_, _))) => {
                         if block.active_into.contains(&rec) {
@@ -713,7 +713,7 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
             let err = format!("\"stop\" expr \"stop <name>\" has invalid args: {:?}", args);
             let mut block = &mut dat.blocks[blocki];
 
-            if let [box Item::Name(ref name)] = args[..] {
+            if let [box Token::Name(ref name)] = args[..] {
                 let remove;
 
                 match block.dyns.get_mut(name) {
@@ -767,7 +767,7 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
     }
 }
  
-fn compile_expr(dat: &mut CompileData, block: usize, op: &Item, args: &Vec<Box<Item>>) -> Vec<ast::Stmt> {
+fn compile_expr(dat: &mut CompileData, block: usize, op: &Token, args: &Vec<Box<Token>>) -> Vec<ast::Stmt> {
     let mut out = Vec::new();
 
     if let Ok(val) = gen_value(dat, block, op, &mut out) {
@@ -781,7 +781,7 @@ fn compile_expr(dat: &mut CompileData, block: usize, op: &Item, args: &Vec<Box<I
         ]));
         out.push(stmt);
         out
-    } else if let &Item::Name(ref name) = op {
+    } else if let &Token::Name(ref name) = op {
         compile_name_expr(dat, block, name, args)
     } else {
         panic!(format!("{:?} is not a matchable value or operation", op)) // TODO no panic
@@ -804,14 +804,14 @@ fn gen_mac(name: &str, exprs: &mut [&mut FnMut(ExprBuilder) -> P<ast::Expr>]) ->
     gen_mac_direct(name, exprs.iter_mut().map(|f| f(ExprBuilder::new())).collect())
 }
 
-fn gen_value<'a>(dat: &'a mut CompileData, block: usize, from: &Item, prefix: &mut Vec<ast::Stmt>) -> Result<Value, String> {
+fn gen_value<'a>(dat: &'a mut CompileData, block: usize, from: &Token, prefix: &mut Vec<ast::Stmt>) -> Result<Value, String> {
     let vars = dat.vars.clone();
 
     {
         let blockdat = &mut dat.blocks[block];
 
         match from {
-            &Item::Name(ref id) => {
+            &Token::Name(ref id) => {
                 if let Some(l) = blockdat.dyns.get(id) {
                     return l.deref(&vars, prefix);
                 }
@@ -825,7 +825,7 @@ fn gen_value<'a>(dat: &'a mut CompileData, block: usize, from: &Item, prefix: &m
     else { Err(format!("{:?} is not a static or local value", from)) }
 }
 
-fn gen_static_value(dat: &mut CompileData, block: usize, from: &Item) -> Result<StaticValue, String> {
+fn gen_static_value(dat: &mut CompileData, block: usize, from: &Token) -> Result<StaticValue, String> {
     let (d, v) = gen_static_value_delayed(dat, block, from)?;
     if let Some(d) = d { d.run(dat); }
     Ok(v)
@@ -833,7 +833,7 @@ fn gen_static_value(dat: &mut CompileData, block: usize, from: &Item) -> Result<
 
 struct DelayedCompile<'a> {
     block: usize,
-    from: &'a [Box<Item>],
+    from: &'a [Box<Token>],
 }
 
 impl<'a> DelayedCompile<'a> {
@@ -842,10 +842,10 @@ impl<'a> DelayedCompile<'a> {
     }
 }
 
-fn gen_static_value_delayed<'a, 'b>(dat: &'b mut CompileData, block: usize, from: &'a Item) -> Result<(Option<DelayedCompile<'a>>, StaticValue), String> {
+fn gen_static_value_delayed<'a, 'b>(dat: &'b mut CompileData, block: usize, from: &'a Token) -> Result<(Option<DelayedCompile<'a>>, StaticValue), String> {
     match from {
         // compile block and add to global functions
-        &Item::Block(ref lines) => {
+        &Token::Block(ref lines) => {
             let index = dat.blocks.len();
             dat.blocks.push(BlockDat::new(index, Some(block)));
 
@@ -856,15 +856,15 @@ fn gen_static_value_delayed<'a, 'b>(dat: &'b mut CompileData, block: usize, from
             StaticValue::Block{ index: index }))
         }
         // add to global regex list
-        &Item::Regex(ref source) => {
+        &Token::Regex(ref source) => {
             let index = dat.regexs.entry(source.clone()).or_insert(dat.vars.next());
             let id = format!("_regex_{}", index);
 
             Ok((None, StaticValue::Regex{ id: id }))
         }
         // string literal
-        &Item::StrLiteral(ref value) => Ok((None, StaticValue::Str{ value: value.clone() })),
-        &Item::Name(ref id) => {
+        &Token::StrLiteral(ref value) => Ok((None, StaticValue::Str{ value: value.clone() })),
+        &Token::Name(ref id) => {
             if let Some(value) = dat.get_static(block, id) { Ok((None, value.clone())) }
             else { Err(format!("{} does not name a prior static value", id)) }
         },
@@ -872,16 +872,16 @@ fn gen_static_value_delayed<'a, 'b>(dat: &'b mut CompileData, block: usize, from
     }
 }
 
-fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) -> P<ast::Block> {
+fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Token>]) -> P<ast::Block> {
     let mut later = Vec::new();
 
     // find and compile statics
     for i in toks {
         match i {
-            &box Item::Expr(box Item::Name(ref op), ref args) => match &op[..] {
+            &box Token::Expr(Some(box Token::Name(ref op)), ref args) => match &op[..] {
                 "stat" => {
                     // check name and value
-                    if let [box Item::Name(ref name), box ref value] = args[..] {
+                    if let [box Token::Name(ref name), box ref value] = args[..] {
                         let (d, v) = gen_static_value_delayed(dat, block, value).unwrap();
                         if let Some(d) = d { later.push(d); }
                         dat.blocks[block].statics.insert(name.clone(), v);  // TODO no unwraps
@@ -892,11 +892,11 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
                 "def" => {
                     let err = format!("\"def\" expr \"def <name> [<str|item|list> ...]\" has invalid args: {:?}", args);
                     // get the new defined tuple/enum's name (first arg)
-                    if let [box Item::Name(ref name), ..] = args[..] {
+                    if let [box Token::Name(ref name), ..] = args[..] {
                         let mut parts = Vec::new();
                         for i in &args[1..] {
                             // for each type in the tuple (remaining args)
-                            if let &box Item::Name(ref ty) = i {
+                            if let &box Token::Name(ref ty) = i {
                                 parts.push(match &ty.to_lowercase()[..] {
                                     "str" => DefPart::STR,
                                     "item" => DefPart::ITEM,
@@ -937,9 +937,9 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
     // actually compile
     for t in toks {
         match t {
-            &box Item::Expr(ref op, ref args) => code = code.with_stmts(
+            &box Token::Expr(Some(ref op), ref args) => code = code.with_stmts(
                 compile_expr(dat, block, op.as_ref(), args).into_iter()),
-            &box Item::Comment(_) => (),
+            &box Token::Comment(_) => (),
             _ => panic!(format!("{:?} is not a valid program line", t)),
         }
     }
@@ -953,7 +953,7 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
     code.build()
 }
 
-pub fn compile(toks: &[Box<Item>]) {
+pub fn compile(toks: &[Box<Token>]) {
     let mut dat = CompileData::new();
     dat.blocks.push(BlockDat::new(0, None));
     dat.blocks[0].block = Some(compile_from_iter(&mut dat, 0, toks));

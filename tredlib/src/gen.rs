@@ -1,10 +1,11 @@
 #[macro_export]
 macro_rules! _tredgen_append {
-    ($pos:ident, $out:expr, $x:expr) => {
+    ($pos:ident, $vec:ident, $out:expr, $x:expr) => {
         {
             let mut __r = $x;
             $pos = __r.0;
-            $out(&mut __r.1);
+            let $vec = &mut __r.1;
+            $out;
         }
     };
 }
@@ -45,13 +46,13 @@ macro_rules! _tredgen_match_regex {
 
 #[macro_export]
 macro_rules! _tredgen_or {
-    ($pos:ident, $text:ident, $out:expr $(, $x:expr)+) => {
+    ($pos:ident, $text:ident, $vec:ident, $out:expr $(, $x:expr)+) => {
         {
             let mut __causes = ::std::vec::Vec::new();
             let mut __next = true;
             $(
                 if __next { match $x {
-                    ::std::result::Result::Ok(mut __res) => { _tredgen_append!($pos, $out, __res); __next = false; },
+                    ::std::result::Result::Ok(mut __res) => { _tredgen_append!($pos, $vec, $out, __res); __next = false; },
                     ::std::result::Result::Err(__c) => __causes.push(__c), 
                 }}
             )+
@@ -62,7 +63,7 @@ macro_rules! _tredgen_or {
 
 #[macro_export]
 macro_rules! _tredgen_not {
-    ($pos:ident, $text:ident, $out:expr, $x:expr) => {
+    ($pos:ident, $text:ident, $vec:ident, $out:expr, $x:expr) => {
         if let ::std::result::Result::Ok(_) = $x { 
            return ::std::result::Result::Err(::tredlib::ParseErr{at: $pos, msg: ::std::option::Option::None, cause: ::std::vec::Vec::new()});
         }
@@ -71,31 +72,31 @@ macro_rules! _tredgen_not {
 
 #[macro_export]
 macro_rules! _tredgen_option {
-    ($pos:ident, $text:ident, $out:expr, $x1:expr $(, $x2:expr)*) => {
+    ($pos:ident, $text:ident, $vec:ident, $out:expr, $x1:expr $(, $x2:expr)*) => {
         if let ::std::result::Result::Ok(mut __res) = $x1 {
-            _tredgen_append!($pos, $out, __res);
+            _tredgen_append!($pos, $vec, $out, __res);
         }
         $(else if let ::std::result::Result::Ok(mut __res) = $x2 {
-            _tredgen_append!($pos, $out, __res);
+            _tredgen_append!($pos, $vec, $out, __res);
         })*
     };
 }
 
 #[macro_export]
 macro_rules! _tredgen_many {
-    ($pos:ident, $text:ident, $out:expr, $x1:expr $(, $x2:expr)*) => {
+    ($pos:ident, $text:ident, $vec:ident, $out:expr, $x1:expr $(, $x2:expr)*) => {
         {
             let mut __mark = false;
             loop {
                 match $x1 {
-                    ::std::result::Result::Ok(mut __res) => _tredgen_append!($pos, $out, __res),
+                    ::std::result::Result::Ok(mut __res) => _tredgen_append!($pos, $vec, $out, __res),
                     ::std::result::Result::Err(__c) =>  
                         if !__mark { return ::std::result::Result::Err(::tredlib::ParseErr{at: $pos, msg: ::std::option::Option::None, cause: vec![__c]}); }
                         else { break; }
                 }
                 __mark = true;
                 $(if let ::std::result::Result::Ok(mut __res) = $x2 {
-                    _tredgen_append!($pos, $out, __res);
+                    _tredgen_append!($pos, $vec, $out, __res);
                 } else {
                     break;
                 })*
@@ -106,10 +107,10 @@ macro_rules! _tredgen_many {
 
 #[macro_export]
 macro_rules! _tredgen_some {
-    ($pos:ident, $text:ident, $out:expr $(, $x:expr)+) => {
+    ($pos:ident, $text:ident, $vec:ident, $out:expr $(, $x:expr)+) => {
         loop {
             $(if let ::std::result::Result::Ok(mut __res) = $x {
-                _tredgen_append!($pos, $out, __res);
+                _tredgen_append!($pos, $vec, $out, __res);
             } else {
                 break;
             })+
@@ -119,10 +120,10 @@ macro_rules! _tredgen_some {
 
 #[macro_export]
 macro_rules! _tredgen_all {
-    ($pos:ident, $text:ident, $out:expr $(, $x:expr)+) => {
+    ($pos:ident, $text:ident, $vec:ident, $out:expr $(, $x:expr)+) => {
         while $pos < $text.len() {
             $(match $x {
-                Ok(mut __res) => _tredgen_append!($pos, $out, __res),
+                Ok(mut __res) => _tredgen_append!($pos, $vec, $out, __res),
                 __e @ _ => return __e,
             })+
         }

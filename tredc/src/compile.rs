@@ -22,7 +22,7 @@ use std::sync::{Arc, atomic};
 
 use core::fmt::{self, Formatter, Debug};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum DefPart {
     STR,
     ITEM,
@@ -70,7 +70,7 @@ impl SecNext {
 
 #[derive(Debug)]
 struct CompileData {
-    pub defs: Vec<(String, Vec<DefPart>)>,
+    pub defs: HashMap<String, Vec<DefPart>>,
     pub regexs: HashMap<String, usize>,
     pub blocks: Vec<BlockDat>,
     pub vars: SecNext,
@@ -79,7 +79,7 @@ struct CompileData {
 impl CompileData {
     pub fn new() -> CompileData {
         CompileData {
-            defs: Vec::new(),
+            defs: HashMap::new(),
             regexs: HashMap::new(),
             blocks: Vec::new(),
             vars: SecNext::new(0),
@@ -123,63 +123,142 @@ impl BlockDat {
         }
     }
 
-    fn do_gen_append(&self, vars: &SecNext) -> P<ast::Block> {
+    fn do_gen_append(&self, vars: &SecNext, vec: &str) -> P<ast::Block> {
         let mut lines = BlockBuilder::new();
         let only = self.active_into.len() == 1;
 
         for i in &self.active_into {
-            if let Some(s) = i.append_part(only) { lines = lines.with_stmt(s); }
+            if let Some(s) = i.append_part(vec, only) { lines = lines.with_stmt(s); }
         }
 
         lines.build()
     }
 
-    pub fn gen_append(&self, expr: ExprBuilder, vars: &SecNext) -> P<ast::Expr> {
-        expr.paren().closure().by_ref() 
-            .fn_decl()
-                .arg()
-                    .id("_vec")
-                    .ty().ref_().mut_().ty().path()
-                        .global()
-                        .id("std")
-                        .id("vec")
-                        .segment("Vec")
-                            .ty().box_().id("Token")
-                            .build()
-                        .build()
-                .return_().unit()
-            .expr().build_block(self.do_gen_append(vars))
+    pub fn gen_append(&self, expr: ExprBuilder, vars: &SecNext, vec: &str, ) -> P<ast::Expr> {
+        expr.build_block(self.do_gen_append(vars, vec))
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum IntoRec {
     List(String),
-    Once(String),
+    Once(String, bool),
 }
 
 impl IntoRec {
-    pub fn append_part(&self, only: bool) -> Option<ast::Stmt> {
+    pub fn as_vec(&self, leave: bool) -> P<ast::Expr> {
+        match (self, leave) {
+            (&IntoRec::Once(ref var, false), _) => {
+                ExprBuilder::new()
+                .method_call("collect")
+                .method_call("cloned")
+                .method_call("iter")
+                    .id(var)
+                .build()
+                .build()
+                .build()
+            },
+            (&IntoRec::Once(ref var, true), true) => {
+                 ExprBuilder::new()
+                .method_call("clone")
+                    .id(var)
+                .build()
+            },
+            (&IntoRec::List(ref var), true) => {
+                ExprBuilder::new()
+                .method_call("clone")
+                    .id(var)
+                .build()
+            },
+            (&IntoRec::Once(ref var, true), false) => {
+                ExprBuilder::new().id(var)
+
+            },
+            (&IntoRec::List(ref var), false) => {
+                ExprBuilder::new().id(var)
+            },
+        }
+    }
+
+    pub fn as_opt(&self, leave: bool) -> P<ast::Expr> {
+        match (self, leave) {
+            (&IntoRec::Once(ref var, false), true) => {
+                ExprBuilder::new()
+                .method_call("clone")
+                    .id(var)
+                .build()
+            },
+            (&IntoRec::Once(ref var, true), true) => {
+                ExprBuilder::new()
+                .method_call("next")
+                .method_call("cloned")
+                .method_call("iter")
+                    .id(var)
+                .build()
+                .build()
+                .build()
+            },
+            (&IntoRec::List(ref var), true) => {
+                ExprBuilder::new()
+                .method_call("next")
+                .method_call("cloned")
+                .method_call("iter")
+                    .id(var)
+                .build()
+                .build()
+                .build()
+            },
+            (&IntoRec::Once(ref var, false), false) => {
+                ExprBuilder::new().id(var)
+
+            },
+            (&IntoRec::Once(ref var, true), false) => {
+                ExprBuilder::new()
+                .method_call("next")
+                .method_call("into_iter")
+                    .id(var)
+                .build()
+                .build()
+
+            },
+            (&IntoRec::List(ref var), false) => {
+                ExprBuilder::new()
+                .method_call("next")
+                .method_call("into_iter")
+                    .id(var)
+                .build()
+                .build()
+            },
+        }
+    }
+
+    pub fn append_part(&self, vec: &str, only: bool) -> Option<ast::Stmt> {
         match *self {
-            IntoRec::Once(ref var) => {
+            IntoRec::Once(ref var, list) => {
                 let build = StmtBuilder::new();
-                if only {
-                    Some(build.expr().assign()
+                match (list, only) {
+                    (true, true) => Some(build.expr().method_call("append")
+                        .id(var)
+                        .arg().id(vec)
+                        .build()),
+                    (true, false) => Some(build.expr().method_call("extend")
+                        .id(var)
+                        .arg().id(vec)
+                        .build()),
+                    (false, true) => Some(build.expr().assign()
                         .id(var)
                         .method_call("or")
                             .method_call("pop")
-                                .id("_vec")
+                                .id(vec)
                                 .build()
                             .arg().id(var)
-                            .build())
-
-                } else {
-                    Some(build.expr().assign()
+                            .build()),
+                    (false, false) => Some(build.expr().assign()
                         .id(var)
                         .method_call("or")
                             .method_call("cloned")
                                 .method_call("last")
-                                    .id("_vec")
+                                    .id(vec)
                                     .build()
                                 .build()
                             .arg().id(var)
@@ -192,13 +271,13 @@ impl IntoRec {
                     Some(build.expr().method_call("append")
                         .id(var)
                         .arg()
-                            .id("_vec")
+                            .id(vec)
                         .build())
 
                 } else {
                     Some(build.expr().method_call("extend")
                         .id(var)
-                        .arg().id("_vec")
+                        .arg().id(vec)
                         .build())
 
                 }
@@ -389,7 +468,7 @@ impl CaptureDat {
                 .method_call("clone")
                     .id(self.acc_name.as_ref().unwrap())
                     .build()
-                .index()
+                .ref_().index()
                     .id("_text")
                     .range()
                         .from().id(&self.start_name)
@@ -402,7 +481,7 @@ impl CaptureDat {
                     .global()
                     .ids(&["std", "string", "String", "from"])
                     .build()
-                .arg().index()
+                .arg().ref_().index()
                     .id("_text")
                     .range()
                         .from().id(&self.start_name)
@@ -426,11 +505,14 @@ fn gen_expr_vals(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args
         .collect();
 
     let block = &dat.blocks[blocki];
+    let res_vec = dat.vars.next_name("_resvec_");
 
     let mut macargs: Vec<P<ast::Expr>> = vec![
         ExprBuilder::new().id("_at"),
         ExprBuilder::new().id("_text"),
-        block.gen_append( ExprBuilder::new(), &dat.vars),
+        ExprBuilder::new().id(&res_vec),
+
+        block.gen_append(ExprBuilder::new(), &dat.vars, &res_vec),
     ];
     macargs.extend(vals.into_iter().map(|v| v.gen_match(&mut out)));
 
@@ -445,11 +527,13 @@ fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args:
         let mut out = Vec::new();
         let val = gen_value(dat, blocki, val, &mut out).expect(&err);
         let block = &dat.blocks[blocki];
+        let res_vec = dat.vars.next_name("_resvec_");
 
         let stmt = StmtBuilder::new().expr().build_mac(gen_mac(mac, &mut [
             &mut |e| e.id("_at"),
             &mut |e| e.id("_text"),
-            &mut |e| block.gen_append(e, &dat.vars),
+            &mut |e| e.id(&res_vec),
+            &mut |e| block.gen_append(e, &dat.vars, &res_vec),
             &mut |e| e.build(val.gen_match(&mut out)),
         ]));
         out.push(stmt);
@@ -460,37 +544,72 @@ fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args:
     }
 }
 
+fn gen_token_output(dat: &CompileData, block: usize, def: DefPart, item: &Item) -> Result<P<ast::Expr>, String>  {
+    match (def, item) {
+        (DefPart::ITEM, &Item::Tuple(box Item::Name(ref name), ref parts)) => {
+            let part_defs = dat.defs.get(name);
+            if part_defs.is_none() { return Err(format!("{} is an unknown definition", name)); }
+            let part_defs = part_defs.unwrap();
+
+            if part_defs.len() != parts.len() { return Err(format!("{} has {} members, only {} were supplied", name, part_defs.len(), parts.len())); }
+
+            if !part_defs.is_empty() {
+                let mut eb = ExprBuilder::new().some().box_().call()
+                    .path().ids(&["Token", name]).build();
+
+                for i in 0..part_defs.len() {
+                    match gen_token_output(dat, block, part_defs[i], parts[i].as_ref()) {
+                        Ok(e) => eb = eb.with_arg(e),
+                        e @ _ => return e,
+                    }
+                }
+
+                Ok(eb.build())
+            } else {
+                Ok(ExprBuilder::new().some().box_()
+                    .path().ids(&["Token", name]).build())
+            }
+        },
+        (DefPart::ITEM, &Item::Name(ref name)) => {
+            match dat.blocks[block].dyns.get(name) {
+                Some(&DynValue::IntoVal(ref into)) => Ok(into.as_opt(true)),
+                Some(v @ _) => Err(format!("{} ({:?}) is dynamic but has not received into or into_once", name, v)),
+                None => Err(format!("{} does not name a value", name)),
+            }
+        },
+        (DefPart::LIST, &Item::Name(ref name)) => {
+            match dat.blocks[block].dyns.get(name) {
+                Some(&DynValue::IntoVal(ref into)) => Ok(into.as_vec(true)),
+                Some(v @ _) => Err(format!("{} ({:?}) is dynamic but has not received into or into_once", name, v)),
+                None => Err(format!("{} does not name a value", name)),
+            }
+        },
+        (DefPart::STR, &Item::Name(ref name)) => {
+            match dat.blocks[block].dyns.get(name) {
+                Some(&DynValue::Capture {dat: ref dat}) => Ok(dat.eval_own()),
+                Some(v @ _) => Err(format!("{} ({:?}) is dynamic but not a capture", name, v)),
+                None => match dat.blocks[block].statics.get(name) {
+                    Some(&StaticValue::Str {value: ref val}) => Ok(ExprBuilder::new().str(&unescape(val).unwrap()[..])),
+                    Some(v @ _) => Err(format!("{} ({:?}) is static but not a string", name, v)),
+                    None => Err(format!("{} does not name a value", name)),
+                }
+            }
+
+
+        },
+        (DefPart::STR, &Item::StrLiteral(ref val)) => {
+            Ok(ExprBuilder::new().str(&unescape(val).unwrap()[..]))
+        },
+        _ => Err(format!("{:?} is not a valid as a {:?} member", item, def))
+    }
+}
+
 fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &Vec<Box<Item>>) -> Vec<ast::Stmt> {
     let vars = dat.vars.clone();
 
     match &op[..] {
-        // def expression
-        "def" => {
-            let err = format!("\"def\" expr \"def <name> [<str|item|list> ...]\" has invalid args: {:?}", args);
-            // get the new defined tuple/enum's name (first arg)
-            if let [box Item::Name(ref name), ..] = args[..] {
-                let mut parts = Vec::new();
-                for i in &args[1..] {
-                    // for each type in the tuple (remaining args)
-                    if let &box Item::Name(ref ty) = i {
-                        parts.push(match &ty.to_lowercase()[..] {
-                            "str" => DefPart::STR,
-                            "item" => DefPart::ITEM,
-                            "list" => DefPart::LIST,
-                            _ => panic!(err)
-                        });
-                    } else {
-                        panic!(err);
-                    }
-                }
-                // add def
-                dat.defs.push((name.clone(), parts));
-            } else {
-                panic!(err);
-            }
-
-            Vec::new()
-        },
+        // def expression (already handled)
+        "def" => Vec::new(),
         // stat expression (already handled)
         "stat" => Vec::new(),
         "not" => {
@@ -542,11 +661,13 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
                 panic!(err);
             }
 
-            let id = vars.next_name("_intolist_");
+            let exporting = name == "export";
+            let id = if exporting { String::from("_out") } else { vars.next_name("_intolist_") };
             let rec = IntoRec::List(id.clone());
             block.active_into.push(rec.clone());
             block.dyns.insert(name.clone(), DynValue::IntoVal(rec));
-            vec![StmtBuilder::new().let_()
+            if exporting { Vec::new() } else {
+                vec![StmtBuilder::new().let_()
                 .mut_id(&id)
                 .expr().call()
                     .path()
@@ -554,6 +675,7 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
                         .ids(&["std", "vec", "Vec", "new"])
                         .build()
                     .build()]
+            }
         },
         "into_once" => {
             let err = format!("\"into_once\" expr \"into_once <name>\" has invalid args: {:?}", args);
@@ -562,7 +684,7 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
             let name;
             if let [box Item::Name(ref n)] = args[..] {
                 match block.dyns.get(n) {
-                    Some(&DynValue::IntoVal(ref rec @ IntoRec::Once(_))) => {
+                    Some(&DynValue::IntoVal(ref rec @ IntoRec::Once(_, _))) => {
                         if block.active_into.contains(&rec) {
                             panic!(format!("Already assigning into \"{}\"", n));
                         }
@@ -576,27 +698,39 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
                 panic!(err);
             }
 
-            let id = vars.next_name("_intolist_");
-            let rec = IntoRec::Once(id.clone());
+            let exporting = name == "export";
+            let id = if exporting { String::from("_out") } else { vars.next_name("_intoonce_") };
+            let rec = IntoRec::Once(id.clone(), exporting);
             block.active_into.push(rec.clone());
             block.dyns.insert(name.clone(), DynValue::IntoVal(rec));
-            vec![StmtBuilder::new().let_()
-                .mut_id(&id)
-                .expr().none()]
+            if exporting { Vec::new() } else {
+                vec![StmtBuilder::new().let_()
+                    .mut_id(&id)
+                    .expr().none()]
+            }
         },
         "stop" => {
             let err = format!("\"stop\" expr \"stop <name>\" has invalid args: {:?}", args);
             let mut block = &mut dat.blocks[blocki];
 
             if let [box Item::Name(ref name)] = args[..] {
+                let remove;
+
                 match block.dyns.get_mut(name) {
-                    Some(&mut DynValue::Capture{dat: ref mut cap}) => {
-                        return cap.gen_end(&vars);
-                    },
+                    Some(&mut DynValue::Capture{dat: ref mut cap}) => return cap.gen_end(&vars),
+                    Some(&mut DynValue::IntoVal(ref v)) => remove = v,
                     // TODO
                     Some(v) => panic!(format!("Can not stop value {:?}", v)),
                     None => panic!(format!("No local value named {:?}", name)),
                 }
+
+                if let Some((i, _)) = block.active_into.iter().enumerate().find(|v| v.1 == remove) {
+                    block.active_into.swap_remove(i);
+                } else {
+                    panic!(format!("Can not stop nonexistent value {}", name))
+                }
+
+                Vec::new()
             } else {
                 panic!(err); // TODO no panics
             }
@@ -617,7 +751,16 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
             gen_expr_vals("_tredgen_or", "option", dat, blocki, args)
         },
         "export" => {
-            Vec::new()
+            let err = format!("\"export\" expr \"export <enum>(<data>...)\" has invalid args: {:?}", args);
+            if let [box ref item] = args[..] {
+                vec![StmtBuilder::new().expr().method_call("extend")
+                    .id("_out")
+                    .with_arg(gen_token_output(dat, blocki, DefPart::ITEM, item).expect(&err))
+                    .build()
+                ]
+            } else {
+                panic!(err);
+            }  
         },
         // no other expressions
         _ => Vec::new()
@@ -628,9 +771,12 @@ fn compile_expr(dat: &mut CompileData, block: usize, op: &Item, args: &Vec<Box<I
     let mut out = Vec::new();
 
     if let Ok(val) = gen_value(dat, block, op, &mut out) {
+        let res_vec = dat.vars.next_name("_resvec_");
+
         let stmt = StmtBuilder::new().expr().build_mac(gen_mac("_tredgen_append", &mut [
             &mut |e| e.id("_at"),
-            &mut |e| dat.blocks[block].gen_append(e, &dat.vars),
+            &mut |e| e.id(&res_vec),
+            &mut |e| dat.blocks[block].gen_append(e, &dat.vars, &res_vec),
             &mut |e| e.try().build(val.gen_match(&mut out)),
         ]));
         out.push(stmt);
@@ -732,19 +878,44 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
     // find and compile statics
     for i in toks {
         match i {
-            &box Item::Expr(box Item::Name(ref stat), ref args) if stat == "stat" => {
-                // has form "stat name value;"
-
-                // check name and value
-                if let [box Item::Name(ref name), box ref value] = args[..] {
-                    let (d, v) = gen_static_value_delayed(dat, block, value).unwrap();
-                    if let Some(d) = d { later.push(d); }
-                    dat.blocks[block].statics.insert(name.clone(), v);  // TODO no unwraps
-                } else {
-                    panic!(format!("\"stat\" expr \"stat <name> <value>\" has invalid args: {:?}", args))
-                }
+            &box Item::Expr(box Item::Name(ref op), ref args) => match &op[..] {
+                "stat" => {
+                    // check name and value
+                    if let [box Item::Name(ref name), box ref value] = args[..] {
+                        let (d, v) = gen_static_value_delayed(dat, block, value).unwrap();
+                        if let Some(d) = d { later.push(d); }
+                        dat.blocks[block].statics.insert(name.clone(), v);  // TODO no unwraps
+                    } else {
+                        panic!(format!("\"stat\" expr \"stat <name> <value>\" has invalid args: {:?}", args))
+                    }
+                },
+                "def" => {
+                    let err = format!("\"def\" expr \"def <name> [<str|item|list> ...]\" has invalid args: {:?}", args);
+                    // get the new defined tuple/enum's name (first arg)
+                    if let [box Item::Name(ref name), ..] = args[..] {
+                        let mut parts = Vec::new();
+                        for i in &args[1..] {
+                            // for each type in the tuple (remaining args)
+                            if let &box Item::Name(ref ty) = i {
+                                parts.push(match &ty.to_lowercase()[..] {
+                                    "str" => DefPart::STR,
+                                    "item" => DefPart::ITEM,
+                                    "list" => DefPart::LIST,
+                                    _ => panic!(err)
+                                });
+                            } else {
+                                panic!(err);
+                            }
+                        }
+                        // add def
+                        dat.defs.insert(name.clone(), parts);
+                    } else {
+                        panic!(err);
+                    }
+                },
+                _ => (),
             },
-            _ => ()
+            _ => (),
         }
     }
 
@@ -754,6 +925,14 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
     code = code.stmt().let_()
         .mut_id("_at")
         .expr().id("_start");
+    code = code.stmt().let_()
+    .mut_id("_out")
+    .expr().call()
+        .path()
+            .global()
+            .ids(&["std", "vec", "Vec", "new"])
+            .build()
+        .build();
 
     // actually compile
     for t in toks {
@@ -765,34 +944,11 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Item>]) ->
         }
     }
 
-    code = match dat.blocks[block].dyns.get("export") {
-        Some(&DynValue::IntoVal(IntoRec::List(ref id))) => code.stmt().expr().ok().tuple()
-            .expr().id("_at")
-            .expr().id(id)
-            .build(),
-        Some(&DynValue::IntoVal(IntoRec::Once(ref id))) => code.stmt().expr().ok().tuple()
-            .expr().id("_at")
-            .expr().call()
-                .path()
-                    .global()
-                    .ids(&["std", "vec", "Vec", "from_iter"])
-                    .build()
-                .arg().method_call("iter")
-                    .id(id)
-                    .build()
-                .build()
-            .build(),
-        Some(v @ _) => panic!(format!("Value {:?} is not valid for export", v)),
-        None => code.stmt().expr().ok().tuple()
-            .expr().id("_at")
-            .expr().call()
-                .path()
-                    .global()
-                    .ids(&["std", "vec", "Vec", "new"])
-                    .build()
-                .build()
-            .build(),
-    };
+    code = code.stmt().expr().ok()
+    .tuple()
+        .expr().id("_at")
+        .expr().id("_out")
+        .build();
 
     code.build()
 }

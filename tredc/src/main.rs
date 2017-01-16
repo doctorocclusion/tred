@@ -32,7 +32,7 @@ lazy_static! {
 }
 
 fn main() {
-    let mut f = File::open("../json.trd").unwrap();
+    let mut f = File::open("../example/src/json.trd").unwrap();
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 

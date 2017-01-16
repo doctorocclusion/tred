@@ -6,12 +6,12 @@ pub extern crate lazy_static;
 use std::io::prelude::*;
 use std::fs::File;
 
-mod parse;
+mod json;
 
 fn main() {
-	let mut f = File::open("../test.json").unwrap();
+	let mut f = File::open("test.json").unwrap();
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 
-    println!("{:?}", parse::parse(&s));
+    println!("{:?}", json::parse(&s));
 }

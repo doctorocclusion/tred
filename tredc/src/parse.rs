@@ -1,385 +1,326 @@
-/*
-* Hand compiled by Sam Sartor as part of the bootstrapping process
-*/
-
-/*
-* THIS IS A GENERATED SOURCE FILE, COMPILED FROM parse.trd
-* ALL CHANGES WILL BE OVERRIDEN
-*
-* Usage: 
-*   1. Create a new parser using Parse::new()
-*   2. Pass input text into the parse(&self, &str) function
-*   3. Traverse the outputSted Item tree
-* 
-* Note that a only a single Parse object needs to be created.
-*
-* Also note that the regex create is required
-*/
-
-use tredlib::{ParseErr};
-use tredlib::regex::Regex;
-
-#[derive(Debug)]
-pub enum Item {
-    Expr(Box<Item>, Vec<Box<Item>>),
-    Comment(String),
-    Name(String),
-    Tuple(Box<Item>, Vec<Box<Item>>),
-    Regex(String),
-    StrLiteral(String),
-    Block(Vec<Box<Item>>)
+#[derive(Clone, Debug)]
+pub enum Token {
+    Tuple(::std::option::Option<::std::boxed::Box<Token>>,
+          ::std::vec::Vec<::std::boxed::Box<Token>>),
+    Regex(::std::string::String),
+    Block(::std::vec::Vec<::std::boxed::Box<Token>>),
+    Comment(::std::string::String),
+    Expr(::std::option::Option<::std::boxed::Box<Token>>,
+         ::std::vec::Vec<::std::boxed::Box<Token>>),
+    StrLiteral(::std::string::String),
+    Name(::std::string::String),
 }
-
-pub struct Parse {
-    white_regex: Regex,
-    blank_regex: Regex,
-    name_regex: Regex,
-    comment_regex_1: Regex,
-    comment_regex_2: Regex,
-    strlit_regex: Regex,
-    regex_regex: Regex
-}
-
-impl Parse {
-    pub fn parse(&self, input: &str) -> Result<(usize, Vec<Box<Item>>), ParseErr> {
-        let res = try!(block_main(self, input, 0));
-        Ok((res.1, res.2))
-    }
-
-    pub fn new() -> Parse {
-        Parse {
-            white_regex: Regex::new(r"^[\s\n\r]*").unwrap(),
-            blank_regex: Regex::new(r"^[\s\n\r]+").unwrap(),
-            name_regex: Regex::new(r"^[\w_]+").unwrap(),
-            comment_regex_1: Regex::new(r"^\s*").unwrap(),
-            comment_regex_2: Regex::new(r"^[^\n]*").unwrap(),
-            strlit_regex: Regex::new("^([^\"\\\\]|\\\\.)*").unwrap(),
-            regex_regex: Regex::new("^[^/]+").unwrap()
-        }
+pub fn parse(input: &str)
+ ->
+     ::std::result::Result<::std::vec::Vec<::std::boxed::Box<Token>>,
+                           ::tredlib::ParseErr> {
+    match _blockfn_0(0usize, input) {
+        ::std::result::Result::Ok((_, tree)) =>
+        ::std::result::Result::Ok(tree),
+        ::std::result::Result::Err(err) => ::std::result::Result::Err(err),
     }
 }
-
-fn block_blank_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    let mut at = 0;
-    let mut text = input;
-
-    if let Some((_, end)) = parse.blank_regex.find(text) {
-        at += end;
-        text = &text[end..];
-    } else {
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
-    }
-
-    Ok((text, at, vec![]))
+lazy_static! (static ref
+              _regex_4: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^[\\w_]+").unwrap()
+              ; static ref
+              _regex_33: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^\\s*").unwrap()
+              ; static ref
+              _regex_25: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^([^/\\\\]|(\\\\.))*").unwrap()
+              ; static ref
+              _regex_36: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^[^\\n]*").unwrap()
+              ; static ref
+              _regex_0: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^[\\s\\n\\r]*").unwrap()
+              ; static ref
+              _regex_20: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^([^\"\\\\]|(\\\\.))*").unwrap()
+              ; static ref
+              _regex_1: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^[\\s\\n\\r]+").unwrap()
+              ;);
+fn _blockfn_0(_start: usize, _text: &str)
+ ->
+     ::std::result::Result<(usize, ::std::vec::Vec<::std::boxed::Box<Token>>),
+                           ::tredlib::ParseErr> {
+    let mut _at = _start;
+    let mut _out = ::std::vec::Vec::new();
+    _tredgen_all!(_at , _text , _resvec_48 , { _out.append(_resvec_48) } ,
+                  _blockfn_9(_at, _text));
+    ::std::result::Result::Ok((_at, _out))
 }
-
-fn block_white_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    let mut at = 0;
-    let mut text = input;
-
-    if let Some((_, end)) = parse.white_regex.find(text) {
-        at += end;
-        text = &text[end..];
-    } else {
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
-    }
-
-    Ok((text, at, vec![]))
+fn _blockfn_1(_start: usize, _text: &str)
+ ->
+     ::std::result::Result<(usize, ::std::vec::Vec<::std::boxed::Box<Token>>),
+                           ::tredlib::ParseErr> {
+    let mut _at = _start;
+    let mut _out = ::std::vec::Vec::new();
+    _tredgen_not!(_at , _text , _resvec_2 , { } ,
+                  _tredgen_match_str!(_at , _text , "_"));
+    let mut _start_3: usize;
+    _start_3 = _at;
+    _tredgen_append!(_at , _resvec_5 , { } ,
+                     match _tredgen_match_regex!(_at , _text , _regex_4) {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _out.extend(::std::option::Option::Some(::std::boxed::Box::new(Token::Name(::std::string::String::from(&_text[_start_3.._at])))));
+    ::std::result::Result::Ok((_at, _out))
 }
-
-fn block_comment_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    let mut at = 0;
-    let mut text = input;
-    
-    if !text.starts_with("//") { return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); }
-    at += 2;
-    text = &text[2..];
-
-    if let Some((_, end)) = parse.comment_regex_1.find(text) {
-        at += end;
-        text = &text[end..];
-    } else {
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
-    }
-
-    let cap_start = at;
-
-    if let Some((_, end)) = parse.comment_regex_2.find(text) {
-        at += end;
-        text = &text[end..];
-    } else {
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
-    }
-
-    let out = vec![Box::new(Item::Comment(input[cap_start..at].to_string()))];
-
-    Ok((text, at, out))
+fn _blockfn_2(_start: usize, _text: &str)
+ ->
+     ::std::result::Result<(usize, ::std::vec::Vec<::std::boxed::Box<Token>>),
+                           ::tredlib::ParseErr> {
+    let mut _at = _start;
+    let mut _out = ::std::vec::Vec::new();
+    _tredgen_not!(_at , _text , _resvec_6 , { } ,
+                  _tredgen_match_str!(_at , _text , "_"));
+    let mut _start_7: usize;
+    _start_7 = _at;
+    _tredgen_append!(_at , _resvec_9 , { } ,
+                     match _tredgen_match_regex!(_at , _text , _regex_4) {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    let mut _acc_10 = ::std::string::String::from(&_text[_start_7.._at]);
+    let mut _intolist_11 = ::std::vec::Vec::new();
+    _tredgen_append!(_at , _resvec_12 , { _intolist_11.append(_resvec_12) } ,
+                     match _tredgen_match_str!(_at , _text , "(") {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _tredgen_append!(_at , _resvec_13 , { _intolist_11.append(_resvec_13) } ,
+                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _tredgen_some!(_at , _text , _resvec_15 ,
+                   { _intolist_11.append(_resvec_15) } ,
+                   _blockfn_10(_at, _text) ,
+                   _tredgen_match_regex!(_at , _text , _regex_1));
+    _tredgen_append!(_at , _resvec_16 , { _intolist_11.append(_resvec_16) } ,
+                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _tredgen_append!(_at , _resvec_17 , { _intolist_11.append(_resvec_17) } ,
+                     match _tredgen_match_str!(_at , _text , ")") {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _out.extend(::std::option::Option::Some(::std::boxed::Box::new(Token::Tuple(::std::option::Option::Some(::std::boxed::Box::new(Token::Name(_acc_10.clone()))),
+                                                                                _intolist_11.clone()))));
+    ::std::result::Result::Ok((_at, _out))
 }
-
-fn block_strlit_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    let mut at = 0;
-    let mut text = input;
-
-    if !text.starts_with("\"") {
-        //println!("String Start Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
-    }
-    at += 1;
-    text = &text[1..];
-    
-    let cap_start = at;
-
-    let mut out = Vec::new();
-
-    if let Some((_, end)) = parse.strlit_regex.find(text) {
-        //println!("{}", &text[..end]);
-        out.push(Box::new(Item::StrLiteral(text[..end].to_string())));
-        at += end;
-        text = &text[end..];
-    } else {
-        //println!("String Error: {:?}", at + pos);
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
-    }
-
-    if !text.starts_with("\"") {
-        //println!("String End Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
-    }
-    at += 1;
-    text = &text[1..];
-
-    Ok((text, at, out))
+fn _blockfn_3(_start: usize, _text: &str)
+ ->
+     ::std::result::Result<(usize, ::std::vec::Vec<::std::boxed::Box<Token>>),
+                           ::tredlib::ParseErr> {
+    let mut _at = _start;
+    let mut _out = ::std::vec::Vec::new();
+    _tredgen_append!(_at , _resvec_18 , { } ,
+                     match _tredgen_match_str!(_at , _text , "\"") {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    let mut _start_19: usize;
+    _start_19 = _at;
+    _tredgen_append!(_at , _resvec_21 , { } ,
+                     match _tredgen_match_regex!(_at , _text , _regex_20) {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _out.extend(::std::option::Option::Some(::std::boxed::Box::new(Token::StrLiteral(::std::string::String::from(&_text[_start_19.._at])))));
+    _tredgen_append!(_at , _resvec_22 , { } ,
+                     match _tredgen_match_str!(_at , _text , "\"") {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    ::std::result::Result::Ok((_at, _out))
 }
-
-fn block_regex_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    let mut at = 0;
-    let mut text = input;
-
-    if !text.starts_with("/") {
-        //println!("Regex Start Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
-    }
-    at += 1;
-    text = &text[1..];
-    
-    let cap_start = at;
-
-    if let Some((_, end)) = parse.regex_regex.find(text) {
-        at += end;
-        text = &text[end..];
-    } else {
-        //println!("Regex Error: {:?}", at + pos);
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
-    }
-
-    let out = vec![Box::new(Item::Regex(input[cap_start..at].to_string()))];
-
-    if !text.starts_with("/") {
-        //println!("Regex End Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
-    }
-    at += 1;
-    text = &text[1..];
-
-    Ok((text, at, out))
+fn _blockfn_4(_start: usize, _text: &str)
+ ->
+     ::std::result::Result<(usize, ::std::vec::Vec<::std::boxed::Box<Token>>),
+                           ::tredlib::ParseErr> {
+    let mut _at = _start;
+    let mut _out = ::std::vec::Vec::new();
+    _tredgen_append!(_at , _resvec_23 , { } ,
+                     match _tredgen_match_str!(_at , _text , "/") {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    let mut _start_24: usize;
+    _start_24 = _at;
+    _tredgen_append!(_at , _resvec_26 , { } ,
+                     match _tredgen_match_regex!(_at , _text , _regex_25) {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _out.extend(::std::option::Option::Some(::std::boxed::Box::new(Token::Regex(::std::string::String::from(&_text[_start_24.._at])))));
+    _tredgen_append!(_at , _resvec_27 , { } ,
+                     match _tredgen_match_str!(_at , _text , "/") {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    ::std::result::Result::Ok((_at, _out))
 }
-
-fn block_tuple_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    let mut at = 0;
-    let mut text = input;
-
-    let cap_start = at;
-    if let Some((_, end)) = parse.name_regex.find(text) {
-        at += end;
-        text = &text[end..];
-    } else {
-        //println!("Tuple Name Error: {:?}", at + pos);
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
-    }
-    let name = Box::new(Item::Name(input[cap_start..at].to_string()));
-
-    if !text.starts_with("(") {
-        //println!("Tuple Start Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
-    }
-    at += 1;
-    text = &text[1..];
-
-    let mut args = vec![];
-    let mut first = true;
-    loop {
-        if !first {
-            let res = block_blank_m(parse, text, pos + at);
-            if let Ok(mut x) = res {
-                text = x.0;
-                at += x.1;
-                args.append(&mut x.2);
-            } else {
-                //println!("Tuple Arg Blank Error: {:?}", res);
-                break; 
-            }
-        } else { first = false; }
-        let res = block_value_m(parse, text, pos + at);
-        if let Ok(mut x) = res {
-            text = x.0;
-            at += x.1;
-            args.append(&mut x.2);
-        } else {
-            //println!("Tuple Arg Error: {:?}", res);
-            break;
-        }
-    }
-
-    if !text.starts_with(")") {
-        //println!("Tuple End Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
-    }
-    at += 1;
-    text = &text[1..];
-
-    Ok((text, at, vec![Box::new(Item::Tuple(name, args))]))
+fn _blockfn_5(_start: usize, _text: &str)
+ ->
+     ::std::result::Result<(usize, ::std::vec::Vec<::std::boxed::Box<Token>>),
+                           ::tredlib::ParseErr> {
+    let mut _at = _start;
+    let mut _out = ::std::vec::Vec::new();
+    let mut _intolist_28 = ::std::vec::Vec::new();
+    _tredgen_append!(_at , _resvec_29 , { _intolist_28.append(_resvec_29) } ,
+                     match _tredgen_match_str!(_at , _text , "{") {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _tredgen_some!(_at , _text , _resvec_30 ,
+                   { _intolist_28.append(_resvec_30) } ,
+                   _blockfn_9(_at, _text));
+    _tredgen_append!(_at , _resvec_31 , { _intolist_28.append(_resvec_31) } ,
+                     match _tredgen_match_str!(_at , _text , "}") {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _out.extend(::std::option::Option::Some(::std::boxed::Box::new(Token::Block(_intolist_28.clone()))));
+    ::std::result::Result::Ok((_at, _out))
 }
-
-fn block_name_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    let mut at = 0;
-    let mut text = input;
-
-    let cap_start = at;
-    if let Some((_, end)) = parse.name_regex.find(text) {
-        at += end;
-        text = &text[end..];
-    } else {
-        //println!("Name Error: {:?}", at + pos);
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()});
-    }
-
-    let name = Box::new(Item::Name(input[cap_start..at].to_string()));
-
-    Ok((text, at, vec![name]))
+fn _blockfn_6(_start: usize, _text: &str)
+ ->
+     ::std::result::Result<(usize, ::std::vec::Vec<::std::boxed::Box<Token>>),
+                           ::tredlib::ParseErr> {
+    let mut _at = _start;
+    let mut _out = ::std::vec::Vec::new();
+    _tredgen_append!(_at , _resvec_32 , { } ,
+                     match _tredgen_match_str!(_at , _text , "//") {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _tredgen_append!(_at , _resvec_34 , { } ,
+                     match _tredgen_match_regex!(_at , _text , _regex_33) {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    let mut _start_35: usize;
+    _start_35 = _at;
+    _tredgen_append!(_at , _resvec_37 , { } ,
+                     match _tredgen_match_regex!(_at , _text , _regex_36) {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _out.extend(::std::option::Option::Some(::std::boxed::Box::new(Token::Comment(::std::string::String::from(&_text[_start_35.._at])))));
+    ::std::result::Result::Ok((_at, _out))
 }
-
-fn block_block_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    let mut at = 0;
-    let mut text = input;
-    let mut out = vec![];
-
-    if !text.starts_with("{") {
-        //println!("Block Start Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
-    }
-    at += 1;
-    text = &text[1..];
-
-    loop {
-        let res = block_line_m(parse, text, pos + at);
-        if let Ok(mut x) = res {
-            text = x.0;
-            at += x.1;
-            out.append(&mut x.2);
-        } else {
-            //println!("Block Line Error: {:?}", res);
-            break; 
-        }
-    }
-
-    if !text.starts_with("}") {
-        //println!("Block End Error: {:?}", pos + at);
-        return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); 
-    }
-    at += 1;
-    text = &text[1..];
-
-    Ok((text, at, vec![Box::new(Item::Block(out))]))
+fn _blockfn_7(_start: usize, _text: &str)
+ ->
+     ::std::result::Result<(usize, ::std::vec::Vec<::std::boxed::Box<Token>>),
+                           ::tredlib::ParseErr> {
+    let mut _at = _start;
+    let mut _out = ::std::vec::Vec::new();
+    _tredgen_or!(_at , _text , _resvec_38 , { _out.append(_resvec_38) } ,
+                 _blockfn_3(_at, _text) , _blockfn_4(_at, _text) ,
+                 _blockfn_5(_at, _text) , _blockfn_2(_at, _text) ,
+                 _blockfn_1(_at, _text));
+    ::std::result::Result::Ok((_at, _out))
 }
-
-fn block_value_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    if let Ok(res) = block_strlit_m(parse, input, pos) { return Ok(res); }
-    if let Ok(res) = block_regex_m(parse, input, pos) { return Ok(res); } 
-    if let Ok(res) = block_block_m(parse, input, pos) { return Ok(res); }
-    if let Ok(res) = block_tuple_m(parse, input, pos) { return Ok(res); }
-    if let Ok(res) = block_name_m(parse, input, pos) { return Ok(res); } 
-    Err(ParseErr{at: pos, msg: None, cause: Vec::new()})
+fn _blockfn_8(_start: usize, _text: &str)
+ ->
+     ::std::result::Result<(usize, ::std::vec::Vec<::std::boxed::Box<Token>>),
+                           ::tredlib::ParseErr> {
+    let mut _at = _start;
+    let mut _out = ::std::vec::Vec::new();
+    let mut _intoonce_39 = ::std::option::Option::None;
+    _tredgen_append!(_at , _resvec_40 ,
+                     { _intoonce_39 = _resvec_40.pop().or(_intoonce_39) } ,
+                     match _blockfn_7(_at, _text) {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    let mut _intolist_41 = ::std::vec::Vec::new();
+    _tredgen_some!(_at , _text , _resvec_44 ,
+                   { _intolist_41.append(_resvec_44) } ,
+                   _blockfn_11(_at, _text));
+    _tredgen_append!(_at , _resvec_45 , { _intolist_41.append(_resvec_45) } ,
+                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _tredgen_append!(_at , _resvec_46 , { _intolist_41.append(_resvec_46) } ,
+                     match _tredgen_match_str!(_at , _text , ";") {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _out.extend(::std::option::Option::Some(::std::boxed::Box::new(Token::Expr(_intoonce_39.clone(),
+                                                                               _intolist_41.clone()))));
+    ::std::result::Result::Ok((_at, _out))
 }
-
-fn block_exp_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    let mut at = 0;
-    let mut text = input;
-
-    let mut op;
-    {
-        let res = block_value_m(parse, text, pos + at);
-        if let Ok(mut x) = res {
-            text = x.0;
-            at += x.1;
-            op = x.2.pop().unwrap();
-        } else {
-            //println!("Exp Op Error: {:?}", res);
-            return res; 
-        }
-    }
-
-    let mut args = vec![];
-    loop {
-        let res = block_blank_m(parse, text, pos + at);
-        if let Ok(mut x) = res {
-            text = x.0;
-            at += x.1;
-            args.append(&mut x.2);
-        } else {
-            //println!("Exp Arg Blank Error: {:?}", res);
-            break; 
-        }
-        let res = block_value_m(parse, text, pos + at);
-        if let Ok(mut x) = res {
-            text = x.0;
-            at += x.1;
-            args.append(&mut x.2);
-        } else {
-            //println!("Exp Arg Error: {:?}", res);
-            break;
-        }
-    }
-
-    {
-        let res = block_white_m(parse, text, pos + at);
-        if let Ok(mut x) = res {
-            text = x.0;
-            at += x.1;
-            args.append(&mut x.2);
-        } else {
-            //println!("Exp End Error: {:?}", res);
-            return res; 
-        }
-    }
-
-    if !text.starts_with(";") { return Err(ParseErr{at: at + pos, msg: None, cause: Vec::new()}); }
-    at += 1;
-    text = &text[1..];
-
-    Ok((text, at, vec![Box::new(Item::Expr(op, args))]))
+fn _blockfn_9(_start: usize, _text: &str)
+ ->
+     ::std::result::Result<(usize, ::std::vec::Vec<::std::boxed::Box<Token>>),
+                           ::tredlib::ParseErr> {
+    let mut _at = _start;
+    let mut _out = ::std::vec::Vec::new();
+    _tredgen_or!(_at , _text , _resvec_47 , { _out.append(_resvec_47) } ,
+                 _tredgen_match_regex!(_at , _text , _regex_1) ,
+                 _blockfn_6(_at, _text) , _blockfn_8(_at, _text));
+    ::std::result::Result::Ok((_at, _out))
 }
-
-fn block_line_m<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    if let Ok(res) = block_blank_m(parse, input, pos) { return Ok(res); }
-    if let Ok(res) = block_comment_m(parse, input, pos) { return Ok(res); } 
-    if let Ok(res) = block_exp_m(parse, input, pos) { return Ok(res); }
-    Err(ParseErr{at: pos, msg: None, cause: Vec::new()})
+fn _blockfn_10(_start: usize, _text: &str)
+ ->
+     ::std::result::Result<(usize, ::std::vec::Vec<::std::boxed::Box<Token>>),
+                           ::tredlib::ParseErr> {
+    let mut _at = _start;
+    let mut _out = ::std::vec::Vec::new();
+    _tredgen_append!(_at , _resvec_14 , { _out.append(_resvec_14) } ,
+                     match _blockfn_7(_at, _text) {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    ::std::result::Result::Ok((_at, _out))
 }
-
-fn block_main<'a, 'b>(parse: &'b Parse, input: &'a str, pos: usize) -> Result<(&'a str, usize, Vec<Box<Item>>), ParseErr> {
-    let mut into = vec![];
-    let mut text = input;
-    let mut total = 0usize;
-    loop {
-        let res = block_line_m(parse, text, pos + total);
-        if let Ok(mut x) = res {
-            text = x.0;
-            total += x.1;
-            into.append(&mut x.2);
-        } else { 
-            //println!("Line Error: {:?}", res);
-            break;
-        }
-    }
-    Ok((text, total, into))
+fn _blockfn_11(_start: usize, _text: &str)
+ ->
+     ::std::result::Result<(usize, ::std::vec::Vec<::std::boxed::Box<Token>>),
+                           ::tredlib::ParseErr> {
+    let mut _at = _start;
+    let mut _out = ::std::vec::Vec::new();
+    _tredgen_append!(_at , _resvec_42 , { _out.append(_resvec_42) } ,
+                     match _tredgen_match_regex!(_at , _text , _regex_1) {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    _tredgen_append!(_at , _resvec_43 , { _out.append(_resvec_43) } ,
+                     match _blockfn_7(_at, _text) {
+    ::std::result::Result::Ok(value) => value,
+    ::std::result::Result::Err(err) =>
+    return ::std::result::Result::Err(::std::convert::From::from(err)),
+});
+    ::std::result::Result::Ok((_at, _out))
 }

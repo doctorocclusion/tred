@@ -11,7 +11,7 @@ use aster::ty::TyBuilder;
 use tredlib::{ParseErr};
 use tredlib::regex::{self};
 
-use newparse::{Token};
+use parse::{Token};
 
 use unescape::unescape;
 
@@ -125,10 +125,10 @@ impl BlockDat {
 
     fn do_gen_append(&self, vars: &SecNext, vec: &str) -> P<ast::Block> {
         let mut lines = BlockBuilder::new();
-        let only = self.active_into.len() == 1;
+        let count = self.active_into.len();
 
-        for i in &self.active_into {
-            if let Some(s) = i.append_part(vec, only) { lines = lines.with_stmt(s); }
+        for i in 0..count {
+            if let Some(s) = self.active_into[i].append_part(vec, i == (count - 1)) { lines = lines.with_stmt(s); }
         }
 
         lines.build()
@@ -243,7 +243,12 @@ impl IntoRec {
                         .build()),
                     (true, false) => Some(build.expr().method_call("extend")
                         .id(var)
-                        .arg().id(vec)
+                        .arg()
+                            .method_call("cloned")
+                            .method_call("iter")
+                            .id(vec)
+                            .build()
+                            .build()
                         .build()),
                     (false, true) => Some(build.expr().assign()
                         .id(var)
@@ -277,7 +282,12 @@ impl IntoRec {
                 } else {
                     Some(build.expr().method_call("extend")
                         .id(var)
-                        .arg().id(vec)
+                        .arg()
+                            .method_call("cloned")
+                            .method_call("iter")
+                            .id(vec)
+                            .build()
+                            .build()
                         .build())
 
                 }
@@ -763,7 +773,7 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
             }  
         },
         // no other expressions
-        _ => Vec::new()
+        op @ _ => panic!(format!("Unknown operation: {}", op)),
     }
 }
  
@@ -842,6 +852,32 @@ impl<'a> DelayedCompile<'a> {
     }
 }
 
+fn sanitize_regex(source: &str) -> String {
+    let mut chars = source.chars();
+    let mut out = String::with_capacity(source.len());
+
+    loop {
+        if let Some(c) = chars.next() {
+            match c {
+                '\\' => {
+                    match chars.next() {
+                        Some('/') => out.push('/'),
+                        Some(e @ _) => {
+                            out.push('\\');
+                            out.push(e);
+                        },
+                        None => break,
+                    }
+                },
+                _ => out.push(c),
+            }
+
+        } else { break; }
+    }
+
+    out
+}
+
 fn gen_static_value_delayed<'a, 'b>(dat: &'b mut CompileData, block: usize, from: &'a Token) -> Result<(Option<DelayedCompile<'a>>, StaticValue), String> {
     match from {
         // compile block and add to global functions
@@ -857,7 +893,8 @@ fn gen_static_value_delayed<'a, 'b>(dat: &'b mut CompileData, block: usize, from
         }
         // add to global regex list
         &Token::Regex(ref source) => {
-            let index = dat.regexs.entry(source.clone()).or_insert(dat.vars.next());
+            let source = sanitize_regex(source);
+            let index = dat.regexs.entry(source).or_insert(dat.vars.next());
             let id = format!("_regex_{}", index);
 
             Ok((None, StaticValue::Regex{ id: id }))

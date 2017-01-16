@@ -27,6 +27,7 @@ stat tuple_m {
     "(";
     white_m;
     some {
+        into export;
         value_m;
     } blank_m;
     white_m;
@@ -57,7 +58,7 @@ stat block_m {
     some line_m;
     "}";
 
-    export exps;
+    export Block(exps);
 };
 
 stat comment_m {
@@ -76,10 +77,11 @@ stat value_m {
 stat exp_m {
     into_once op;
     value_m;
-    end op;
+    stop op;
 
     into args;
     some {
+        into export;
         blank_m;
         value_m;
     };

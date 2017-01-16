@@ -15,10 +15,10 @@ extern crate tredlib;
 #[macro_use]
 pub extern crate lazy_static;
 
-mod newparse;
+mod parse;
 mod compile;
 
-use newparse::*;
+use parse::*;
 
 use tredlib::{ParseErr};
 use tredlib::gen;
@@ -28,7 +28,7 @@ use std::io::prelude::*;
 use std::fs::File;
 
 fn main() {
-    let mut f = File::open("../tredc/src/parse.trd").unwrap();
+    let mut f = File::open("src/parse.trd").unwrap();
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 

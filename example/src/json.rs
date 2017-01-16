@@ -1,13 +1,13 @@
 #[derive(Clone, Debug)]
 pub enum Token {
-    String(::std::string::String),
-    False,
+    True,
+    Map(::std::vec::Vec<::std::boxed::Box<Token>>),
     MapEntry(::std::string::String,
              ::std::option::Option<::std::boxed::Box<Token>>),
-    Array(::std::vec::Vec<::std::boxed::Box<Token>>),
-    True,
+    String(::std::string::String),
     Null,
-    Map(::std::vec::Vec<::std::boxed::Box<Token>>),
+    False,
+    Array(::std::vec::Vec<::std::boxed::Box<Token>>),
     Number(::std::string::String),
 }
 pub fn parse(input: &str)
@@ -21,23 +21,23 @@ pub fn parse(input: &str)
     }
 }
 lazy_static! (static ref
-              _regex_0: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^[\\s\\n\\r]*").unwrap()
-              ; static ref
-              _regex_2: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^[^\\\\\"]").unwrap()
-              ; static ref
-              _regex_44: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^\\d").unwrap()
-              ; static ref
-              _regex_4: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^u[\\da-fA-F]{6}").unwrap()
+              _regex_1: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^[\\s\\n\\r]+").unwrap()
               ; static ref
               _regex_42: ::tredlib::regex::Regex =
     ::tredlib::regex::Regex::new("^[1-9]").unwrap()
               ; static ref
-              _regex_1: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^[\\s\\n\\r]+").unwrap()
+              _regex_4: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^u[\\da-fA-F]{6}").unwrap()
+              ; static ref
+              _regex_2: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^[^\\\\\"]").unwrap()
+              ; static ref
+              _regex_0: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^[\\s\\n\\r]*").unwrap()
+              ; static ref
+              _regex_44: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^\\d").unwrap()
               ;);
 fn _blockfn_0(_start: usize, _text: &str)
  ->

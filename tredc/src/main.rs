@@ -26,9 +26,11 @@ use tredlib::regex::{Regex};
 
 use std::io::prelude::*;
 use std::fs::File;
+use std::env;
 
 fn main() {
-    let mut f = File::open("src/parse.trd").unwrap();
+    let fname = env::args().nth(1).expect("No input file given: tredc [tred source file]");
+    let mut f = File::open(fname).unwrap();
     let mut s = String::new();
     f.read_to_string(&mut s).unwrap();
 

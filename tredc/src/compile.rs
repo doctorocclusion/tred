@@ -70,7 +70,7 @@ impl SecNext {
 
 #[derive(Debug)]
 struct CompileData {
-    pub defs: HashMap<String, Vec<DefPart>>,
+    pub defs: Vec<(String, Vec<DefPart>)>,
     pub regexs: HashMap<String, usize>,
     pub blocks: Vec<BlockDat>,
     pub vars: SecNext,
@@ -79,7 +79,7 @@ struct CompileData {
 impl CompileData {
     pub fn new() -> CompileData {
         CompileData {
-            defs: HashMap::new(),
+            defs: Vec::new(),
             regexs: HashMap::new(),
             blocks: Vec::new(),
             vars: SecNext::new(0),
@@ -557,9 +557,9 @@ fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args:
 fn gen_token_output(dat: &CompileData, block: usize, def: DefPart, item: &Token) -> Result<P<ast::Expr>, String>  {
     match (def, item) {
         (DefPart::ITEM, &Token::Tuple(Some(box Token::Name(ref name)), ref parts)) => {
-            let part_defs = dat.defs.get(name);
+            let part_defs = dat.defs.iter().find(|v| v.0 == &name[..]);
             if part_defs.is_none() { return Err(format!("{} is an unknown definition", name)); }
-            let part_defs = part_defs.unwrap();
+            let part_defs = &part_defs.unwrap().1;
 
             if part_defs.len() != parts.len() { return Err(format!("{} has {} members, only {} were supplied", name, part_defs.len(), parts.len())); }
 
@@ -895,7 +895,7 @@ fn gen_static_value_delayed<'a, 'b>(dat: &'b mut CompileData, block: usize, from
         &Token::Regex(ref source) => {
             let source = sanitize_regex(source);
             let index = dat.regexs.entry(source).or_insert(dat.vars.next());
-            let id = format!("_regex_{}", index);
+            let id = format!("_REGEX_{}", index);
 
             Ok((None, StaticValue::Regex{ id: id }))
         }
@@ -945,7 +945,8 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Token>]) -
                             }
                         }
                         // add def
-                        dat.defs.insert(name.clone(), parts);
+                        if dat.defs.iter().find(|v| v.0 == &name[..]).is_some() { panic!(format!("{} is already defined", name)); }
+                        dat.defs.push((name.clone(), parts));
                     } else {
                         panic!(err);
                     }
@@ -1054,13 +1055,15 @@ pub fn compile(toks: &[Box<Token>]) {
     items.push(mainfn);
 
     let mut regexmac = ItemBuilder::new().mac().path().id("lazy_static").build();
-    for (source, index) in dat.regexs.iter() {
+    let mut regexs: Vec<(&String, &usize)> = dat.regexs.iter().collect();
+    regexs.sort_by(|a, b| a.1.cmp(b.1));
+    for (source, index) in regexs {
         regexmac = regexmac
         .expr().id("static")
         .expr().id("ref")
         .expr().assign()
             .type_()
-                .id(format!("_regex_{}", index))
+                .id(format!("_REGEX_{}", index))
                 .path().global().ids(&["tredlib", "regex", "Regex"]).build()
             .method_call("unwrap")
                 .call()

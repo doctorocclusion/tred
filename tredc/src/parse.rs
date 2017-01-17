@@ -1,14 +1,14 @@
 #[derive(Clone, Debug)]
 pub enum Token {
+    Expr(::std::option::Option<::std::boxed::Box<Token>>,
+         ::std::vec::Vec<::std::boxed::Box<Token>>),
+    Comment(::std::string::String),
+    Name(::std::string::String),
     Tuple(::std::option::Option<::std::boxed::Box<Token>>,
           ::std::vec::Vec<::std::boxed::Box<Token>>),
     Regex(::std::string::String),
-    Block(::std::vec::Vec<::std::boxed::Box<Token>>),
-    Comment(::std::string::String),
-    Expr(::std::option::Option<::std::boxed::Box<Token>>,
-         ::std::vec::Vec<::std::boxed::Box<Token>>),
     StrLiteral(::std::string::String),
-    Name(::std::string::String),
+    Block(::std::vec::Vec<::std::boxed::Box<Token>>),
 }
 pub fn parse(input: &str)
  ->
@@ -21,26 +21,26 @@ pub fn parse(input: &str)
     }
 }
 lazy_static! (static ref
-              _regex_4: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^[\\w_]+").unwrap()
-              ; static ref
-              _regex_33: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^\\s*").unwrap()
-              ; static ref
-              _regex_25: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^([^/\\\\]|(\\\\.))*").unwrap()
-              ; static ref
-              _regex_36: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^[^\\n]*").unwrap()
-              ; static ref
-              _regex_0: ::tredlib::regex::Regex =
+              _REGEX_0: ::tredlib::regex::Regex =
     ::tredlib::regex::Regex::new("^[\\s\\n\\r]*").unwrap()
               ; static ref
-              _regex_20: ::tredlib::regex::Regex =
+              _REGEX_1: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^[\\s\\n\\r]+").unwrap()
+              ; static ref
+              _REGEX_4: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^[\\w_]+").unwrap()
+              ; static ref
+              _REGEX_20: ::tredlib::regex::Regex =
     ::tredlib::regex::Regex::new("^([^\"\\\\]|(\\\\.))*").unwrap()
               ; static ref
-              _regex_1: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^[\\s\\n\\r]+").unwrap()
+              _REGEX_25: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^([^/\\\\]|(\\\\.))*").unwrap()
+              ; static ref
+              _REGEX_33: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^\\s*").unwrap()
+              ; static ref
+              _REGEX_36: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^[^\\n]*").unwrap()
               ;);
 fn _blockfn_0(_start: usize, _text: &str)
  ->
@@ -63,7 +63,7 @@ fn _blockfn_1(_start: usize, _text: &str)
     let mut _start_3: usize;
     _start_3 = _at;
     _tredgen_append!(_at , _resvec_5 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_4) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_4) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -82,7 +82,7 @@ fn _blockfn_2(_start: usize, _text: &str)
     let mut _start_7: usize;
     _start_7 = _at;
     _tredgen_append!(_at , _resvec_9 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_4) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_4) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -96,7 +96,7 @@ fn _blockfn_2(_start: usize, _text: &str)
     return ::std::result::Result::Err(::std::convert::From::from(err)),
 });
     _tredgen_append!(_at , _resvec_13 , { _intolist_11.append(_resvec_13) } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_0) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -104,9 +104,9 @@ fn _blockfn_2(_start: usize, _text: &str)
     _tredgen_some!(_at , _text , _resvec_15 ,
                    { _intolist_11.append(_resvec_15) } ,
                    _blockfn_10(_at, _text) ,
-                   _tredgen_match_regex!(_at , _text , _regex_1));
+                   _tredgen_match_regex!(_at , _text , _REGEX_1));
     _tredgen_append!(_at , _resvec_16 , { _intolist_11.append(_resvec_16) } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_0) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -136,7 +136,7 @@ fn _blockfn_3(_start: usize, _text: &str)
     let mut _start_19: usize;
     _start_19 = _at;
     _tredgen_append!(_at , _resvec_21 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_20) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_20) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -165,7 +165,7 @@ fn _blockfn_4(_start: usize, _text: &str)
     let mut _start_24: usize;
     _start_24 = _at;
     _tredgen_append!(_at , _resvec_26 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_25) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_25) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -217,7 +217,7 @@ fn _blockfn_6(_start: usize, _text: &str)
     return ::std::result::Result::Err(::std::convert::From::from(err)),
 });
     _tredgen_append!(_at , _resvec_34 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_33) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_33) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -225,7 +225,7 @@ fn _blockfn_6(_start: usize, _text: &str)
     let mut _start_35: usize;
     _start_35 = _at;
     _tredgen_append!(_at , _resvec_37 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_36) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_36) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -264,7 +264,7 @@ fn _blockfn_8(_start: usize, _text: &str)
                    { _intolist_41.append(_resvec_44) } ,
                    _blockfn_11(_at, _text));
     _tredgen_append!(_at , _resvec_45 , { _intolist_41.append(_resvec_45) } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_0) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -286,7 +286,7 @@ fn _blockfn_9(_start: usize, _text: &str)
     let mut _at = _start;
     let mut _out = ::std::vec::Vec::new();
     _tredgen_or!(_at , _text , _resvec_47 , { _out.append(_resvec_47) } ,
-                 _tredgen_match_regex!(_at , _text , _regex_1) ,
+                 _tredgen_match_regex!(_at , _text , _REGEX_1) ,
                  _blockfn_6(_at, _text) , _blockfn_8(_at, _text));
     ::std::result::Result::Ok((_at, _out))
 }
@@ -311,7 +311,7 @@ fn _blockfn_11(_start: usize, _text: &str)
     let mut _at = _start;
     let mut _out = ::std::vec::Vec::new();
     _tredgen_append!(_at , _resvec_42 , { _out.append(_resvec_42) } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_1) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_1) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),

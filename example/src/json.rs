@@ -1,14 +1,14 @@
 #[derive(Clone, Debug)]
 pub enum Token {
-    True,
-    Map(::std::vec::Vec<::std::boxed::Box<Token>>),
     MapEntry(::std::string::String,
              ::std::option::Option<::std::boxed::Box<Token>>),
-    String(::std::string::String),
-    Null,
-    False,
+    Map(::std::vec::Vec<::std::boxed::Box<Token>>),
     Array(::std::vec::Vec<::std::boxed::Box<Token>>),
+    String(::std::string::String),
     Number(::std::string::String),
+    True,
+    False,
+    Null,
 }
 pub fn parse(input: &str)
  ->
@@ -21,22 +21,22 @@ pub fn parse(input: &str)
     }
 }
 lazy_static! (static ref
-              _regex_1: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^[\\s\\n\\r]+").unwrap()
-              ; static ref
-              _regex_42: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^[1-9]").unwrap()
-              ; static ref
-              _regex_4: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^u[\\da-fA-F]{6}").unwrap()
-              ; static ref
-              _regex_2: ::tredlib::regex::Regex =
-    ::tredlib::regex::Regex::new("^[^\\\\\"]").unwrap()
-              ; static ref
-              _regex_0: ::tredlib::regex::Regex =
+              _REGEX_0: ::tredlib::regex::Regex =
     ::tredlib::regex::Regex::new("^[\\s\\n\\r]*").unwrap()
               ; static ref
-              _regex_44: ::tredlib::regex::Regex =
+              _REGEX_1: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^[\\s\\n\\r]+").unwrap()
+              ; static ref
+              _REGEX_2: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^[^\\\\\"]").unwrap()
+              ; static ref
+              _REGEX_4: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^u[\\da-fA-F]{6}").unwrap()
+              ; static ref
+              _REGEX_42: ::tredlib::regex::Regex =
+    ::tredlib::regex::Regex::new("^[1-9]").unwrap()
+              ; static ref
+              _REGEX_44: ::tredlib::regex::Regex =
     ::tredlib::regex::Regex::new("^\\d").unwrap()
               ;);
 fn _blockfn_0(_start: usize, _text: &str)
@@ -119,7 +119,7 @@ fn _blockfn_3(_start: usize, _text: &str)
     return ::std::result::Result::Err(::std::convert::From::from(err)),
 });
     _tredgen_append!(_at , _resvec_17 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_0) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -131,7 +131,7 @@ fn _blockfn_3(_start: usize, _text: &str)
     return ::std::result::Result::Err(::std::convert::From::from(err)),
 });
     _tredgen_append!(_at , _resvec_19 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_0) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -161,7 +161,7 @@ fn _blockfn_4(_start: usize, _text: &str)
     return ::std::result::Result::Err(::std::convert::From::from(err)),
 });
     _tredgen_append!(_at , _resvec_23 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_0) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -172,7 +172,7 @@ fn _blockfn_4(_start: usize, _text: &str)
                    _blockfn_3(_at, _text) , _blockfn_11(_at, _text));
     _out.extend(::std::option::Option::Some(::std::boxed::Box::new(Token::Map(_intolist_24.clone()))));
     _tredgen_append!(_at , _resvec_29 , { _intolist_24.append(_resvec_29) } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_0) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -198,7 +198,7 @@ fn _blockfn_5(_start: usize, _text: &str)
     return ::std::result::Result::Err(::std::convert::From::from(err)),
 });
     _tredgen_append!(_at , _resvec_32 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_0) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -209,7 +209,7 @@ fn _blockfn_5(_start: usize, _text: &str)
                    _blockfn_8(_at, _text) , _blockfn_12(_at, _text));
     _out.extend(::std::option::Option::Some(::std::boxed::Box::new(Token::Array(_intolist_33.clone()))));
     _tredgen_append!(_at , _resvec_38 , { _intolist_33.append(_resvec_38) } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_0) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -272,7 +272,7 @@ fn _blockfn_9(_start: usize, _text: &str)
     let mut _at = _start;
     let mut _out = ::std::vec::Vec::new();
     _tredgen_or!(_at , _text , _resvec_6 , { } ,
-                 _tredgen_match_regex!(_at , _text , _regex_2) ,
+                 _tredgen_match_regex!(_at , _text , _REGEX_2) ,
                  _blockfn_10(_at, _text));
     ::std::result::Result::Ok((_at, _out))
 }
@@ -298,7 +298,7 @@ fn _blockfn_10(_start: usize, _text: &str)
                  _tredgen_match_str!(_at , _text , "n") ,
                  _tredgen_match_str!(_at , _text , "r") ,
                  _tredgen_match_str!(_at , _text , "t") ,
-                 _tredgen_match_regex!(_at , _text , _regex_4));
+                 _tredgen_match_regex!(_at , _text , _REGEX_4));
     ::std::result::Result::Ok((_at, _out))
 }
 fn _blockfn_11(_start: usize, _text: &str)
@@ -308,7 +308,7 @@ fn _blockfn_11(_start: usize, _text: &str)
     let mut _at = _start;
     let mut _out = ::std::vec::Vec::new();
     _tredgen_append!(_at , _resvec_25 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_0) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -320,7 +320,7 @@ fn _blockfn_11(_start: usize, _text: &str)
     return ::std::result::Result::Err(::std::convert::From::from(err)),
 });
     _tredgen_append!(_at , _resvec_27 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_0) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -334,7 +334,7 @@ fn _blockfn_12(_start: usize, _text: &str)
     let mut _at = _start;
     let mut _out = ::std::vec::Vec::new();
     _tredgen_append!(_at , _resvec_34 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_0) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -346,7 +346,7 @@ fn _blockfn_12(_start: usize, _text: &str)
     return ::std::result::Result::Err(::std::convert::From::from(err)),
 });
     _tredgen_append!(_at , _resvec_36 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_0) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_0) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
@@ -360,13 +360,13 @@ fn _blockfn_13(_start: usize, _text: &str)
     let mut _at = _start;
     let mut _out = ::std::vec::Vec::new();
     _tredgen_append!(_at , _resvec_43 , { } ,
-                     match _tredgen_match_regex!(_at , _text , _regex_42) {
+                     match _tredgen_match_regex!(_at , _text , _REGEX_42) {
     ::std::result::Result::Ok(value) => value,
     ::std::result::Result::Err(err) =>
     return ::std::result::Result::Err(::std::convert::From::from(err)),
 });
     _tredgen_some!(_at , _text , _resvec_45 , { } ,
-                   _tredgen_match_regex!(_at , _text , _regex_44));
+                   _tredgen_match_regex!(_at , _text , _REGEX_44));
     ::std::result::Result::Ok((_at, _out))
 }
 fn _blockfn_14(_start: usize, _text: &str)
@@ -382,7 +382,7 @@ fn _blockfn_14(_start: usize, _text: &str)
     return ::std::result::Result::Err(::std::convert::From::from(err)),
 });
     _tredgen_many!(_at , _text , _resvec_49 , { } ,
-                   _tredgen_match_regex!(_at , _text , _regex_44));
+                   _tredgen_match_regex!(_at , _text , _REGEX_44));
     ::std::result::Result::Ok((_at, _out))
 }
 fn _blockfn_15(_start: usize, _text: &str)
@@ -399,7 +399,7 @@ fn _blockfn_15(_start: usize, _text: &str)
                  _tredgen_match_str!(_at , _text , "-") ,
                  _tredgen_match_str!(_at , _text , ""));
     _tredgen_many!(_at , _text , _resvec_54 , { } ,
-                   _tredgen_match_regex!(_at , _text , _regex_44));
+                   _tredgen_match_regex!(_at , _text , _REGEX_44));
     ::std::result::Result::Ok((_at, _out))
 }
 fn _blockfn_16(_start: usize, _text: &str)

@@ -2,13 +2,9 @@
 
 extern crate core;
 
-extern crate aster;
-#[cfg(feature = "nightly")]
-extern crate syntax;
-#[cfg(not(feature = "nightly"))]
-extern crate syntex_syntax as syntax;
 extern crate unescape;
-
+#[macro_use]
+extern crate quote;
 #[macro_use]
 extern crate tredlib;
 

@@ -1,12 +1,4 @@
-use syntax::{self, ast};
-use syntax::ptr::P;
-
-use aster::block::BlockBuilder;
-use aster::expr::ExprBuilder;
-use aster::stmt::StmtBuilder;
-use aster::mac::MacBuilder;
-use aster::item::ItemBuilder;
-use aster::ty::TyBuilder;
+use quote::{Ident, Tokens};
 
 use tredlib::{ParseErr};
 use tredlib::regex::{self};
@@ -29,20 +21,20 @@ enum DefPart {
     LIST,
 }
 
+const STRING_TY: &'static str = "::std::string::String";
+fn option_box(ident: &str) -> Ident {
+    Ident::new(format!("::std::option::Option<::std::boxed::Box<{}>>", ident))
+}
+fn vec_box(ident: &str) -> Ident {
+    Ident::new(format!("::std::vec::Vec<::std::boxed::Box<{}>>", ident))
+}
+
 impl DefPart {
-    pub fn ty(&self) -> P<ast::Ty> {
-        let ty = TyBuilder::new();
+    pub fn ty(&self) -> Ident {
         match self {
-            &DefPart::STR => ty.path().global().ids(&["std", "string", "String"]).build(),
-            &DefPart::ITEM => ty.option().box_().id("Token"),
-            &DefPart::LIST => ty.path()
-                .global()
-                .id("std")
-                .id("vec")
-                .segment("Vec")
-                    .ty().box_().id("Token")
-                    .build()
-                .build()
+            &DefPart::STR => Ident::new(STRING_TY),
+            &DefPart::ITEM => option_box("Token"),
+            &DefPart::LIST => vec_box("Token")
         }
     }
 }
@@ -63,8 +55,8 @@ impl SecNext {
         self.num.fetch_add(1, atomic::Ordering::Relaxed)
     }
 
-    pub fn next_name(&self, prefix: &str) -> String {
-        format!("{}{}", prefix, self.next())
+    pub fn next_name(&self, prefix: &str) -> Ident {
+        Ident::new(format!("{}{}", prefix, self.next()))
     }
 } 
 
@@ -101,19 +93,17 @@ impl CompileData {
 
 #[derive(Debug)]
 struct BlockDat {
-    pub id: String,
     pub index: usize,
     pub parent: Option<usize>,
     pub statics: HashMap<String, StaticValue>,
     pub dyns: HashMap<String, DynValue>,
     pub active_into: Vec<IntoRec>,
-    pub block: Option<P<ast::Block>>,
+    pub block: Option<Tokens>,
 }
 
 impl BlockDat {
     pub fn new(index: usize, parent: Option<usize>) -> BlockDat {
         BlockDat {
-            id: format!("_blockfn_{}", index),
             index: index,
             parent: parent,
             statics: HashMap::new(),
@@ -123,176 +113,63 @@ impl BlockDat {
         }
     }
 
-    fn do_gen_append(&self, vars: &SecNext, vec: &str) -> P<ast::Block> {
-        let mut lines = BlockBuilder::new();
-        let count = self.active_into.len();
-
-        for i in 0..count {
-            if let Some(s) = self.active_into[i].append_part(vec, i == (count - 1)) { lines = lines.with_stmt(s); }
-        }
-
-        lines.build()
-    }
-
-    pub fn gen_append(&self, expr: ExprBuilder, vars: &SecNext, vec: &str, ) -> P<ast::Expr> {
-        expr.build_block(self.do_gen_append(vars, vec))
+    pub fn gen_append(&self, vars: &SecNext, vec: &Ident) -> Tokens {
+        let last = self.active_into.len() - 1;
+        let intos = self.active_into
+            .iter()
+            .enumerate()
+            .filter_map(|(i, into)| into.append_part(vec, i == last));
+        quote! { {#(#intos)*} }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum IntoRec {
-    List(String),
-    Once(String, bool),
+    List(Ident),
+    Once(Ident, bool),
 }
 
 impl IntoRec {
-    pub fn as_vec(&self, leave: bool) -> P<ast::Expr> {
+    pub fn as_vec(&self, leave: bool) -> Tokens {
         match (self, leave) {
-            (&IntoRec::Once(ref var, false), _) => {
-                ExprBuilder::new()
-                .method_call("collect")
-                .method_call("cloned")
-                .method_call("iter")
-                    .id(var)
-                .build()
-                .build()
-                .build()
-            },
-            (&IntoRec::Once(ref var, true), true) => {
-                 ExprBuilder::new()
-                .method_call("clone")
-                    .id(var)
-                .build()
-            },
-            (&IntoRec::List(ref var), true) => {
-                ExprBuilder::new()
-                .method_call("clone")
-                    .id(var)
-                .build()
-            },
-            (&IntoRec::Once(ref var, true), false) => {
-                ExprBuilder::new().id(var)
-
-            },
-            (&IntoRec::List(ref var), false) => {
-                ExprBuilder::new().id(var)
-            },
+            (&IntoRec::Once(ref var, false), _) => quote! { #var.iter().cloned().collect() },
+            (&IntoRec::Once(ref var, true), true)
+            | (&IntoRec::List(ref var), true) => quote! { #var.clone() },
+            (&IntoRec::Once(ref var, true), false)
+            | (&IntoRec::List(ref var), false) => quote! { #var },
         }
     }
 
-    pub fn as_opt(&self, leave: bool) -> P<ast::Expr> {
+    pub fn as_opt(&self, leave: bool) -> Tokens {
         match (self, leave) {
-            (&IntoRec::Once(ref var, false), true) => {
-                ExprBuilder::new()
-                .method_call("clone")
-                    .id(var)
-                .build()
-            },
-            (&IntoRec::Once(ref var, true), true) => {
-                ExprBuilder::new()
-                .method_call("next")
-                .method_call("cloned")
-                .method_call("iter")
-                    .id(var)
-                .build()
-                .build()
-                .build()
-            },
-            (&IntoRec::List(ref var), true) => {
-                ExprBuilder::new()
-                .method_call("next")
-                .method_call("cloned")
-                .method_call("iter")
-                    .id(var)
-                .build()
-                .build()
-                .build()
-            },
-            (&IntoRec::Once(ref var, false), false) => {
-                ExprBuilder::new().id(var)
-
-            },
-            (&IntoRec::Once(ref var, true), false) => {
-                ExprBuilder::new()
-                .method_call("next")
-                .method_call("into_iter")
-                    .id(var)
-                .build()
-                .build()
-
-            },
-            (&IntoRec::List(ref var), false) => {
-                ExprBuilder::new()
-                .method_call("next")
-                .method_call("into_iter")
-                    .id(var)
-                .build()
-                .build()
-            },
+            (&IntoRec::Once(ref var, false), true) => quote! { #var.clone() },
+            (&IntoRec::Once(ref var, true), true) 
+            | (&IntoRec::List(ref var), true) => quote! { #var.iter().cloned().next() },
+            (&IntoRec::Once(ref var, false), false) => quote! { #var },
+            (&IntoRec::Once(ref var, true), false)
+            | (&IntoRec::List(ref var), false) => quote! { var.into_iter().next() }
         }
     }
 
-    pub fn append_part(&self, vec: &str, only: bool) -> Option<ast::Stmt> {
-        match *self {
+    pub fn append_part(&self, vec: &Ident, only: bool) -> Option<Tokens> {
+        Some(match *self {
             IntoRec::Once(ref var, list) => {
-                let build = StmtBuilder::new();
                 match (list, only) {
-                    (true, true) => Some(build.expr().method_call("append")
-                        .id(var)
-                        .arg().id(vec)
-                        .build()),
-                    (true, false) => Some(build.expr().method_call("extend")
-                        .id(var)
-                        .arg()
-                            .method_call("cloned")
-                            .method_call("iter")
-                            .id(vec)
-                            .build()
-                            .build()
-                        .build()),
-                    (false, true) => Some(build.expr().assign()
-                        .id(var)
-                        .method_call("or")
-                            .method_call("pop")
-                                .id(vec)
-                                .build()
-                            .arg().id(var)
-                            .build()),
-                    (false, false) => Some(build.expr().assign()
-                        .id(var)
-                        .method_call("or")
-                            .method_call("cloned")
-                                .method_call("last")
-                                    .id(vec)
-                                    .build()
-                                .build()
-                            .arg().id(var)
-                            .build())
+                    (true, true) => quote! { #var.append(#vec); },
+                    (true, false) => quote! { #var.extend(#vec.iter().cloned()); },
+                    (false, true) => quote! { #var = #vec.pop().or(#var); },
+                    (false, false) => quote! { #var = #vec.last().cloned().or(#var); },
                 }
             },
             IntoRec::List(ref var) => {
-                let build = StmtBuilder::new();
                 if only {
-                    Some(build.expr().method_call("append")
-                        .id(var)
-                        .arg()
-                            .id(vec)
-                        .build())
+                    quote! { #var.append(#vec); }
 
                 } else {
-                    Some(build.expr().method_call("extend")
-                        .id(var)
-                        .arg()
-                            .method_call("cloned")
-                            .method_call("iter")
-                            .id(vec)
-                            .build()
-                            .build()
-                        .build())
-
+                    quote! { #var.extend(#vec.iter().cloned()); }
                 }
             }
-        }
+        })
     }
 }
 
@@ -304,14 +181,13 @@ enum DynValue {
 }
 
 impl DynValue {
-    pub fn deref(&self, vars: &SecNext, code: &mut Vec<ast::Stmt>) -> Result<Value, String> {
+    pub fn deref(&self, vars: &SecNext, code: &mut Tokens) -> Result<Value, String> {
         match self {
             &DynValue::Val(ref val) => Ok(val.clone()),
             &DynValue::Capture{dat: ref cap} => {
                 let name = vars.next_name("_cap_");
-                code.push(StmtBuilder::new().let_()
-                    .mut_id(&name)
-                    .build_expr(cap.eval_ref()));
+                let expr = cap.eval_ref();
+                code.append(quote! { let #name = #expr; });
                 Ok(Value::Str {var_name: name})
             },
             _ => Err(format!("{:?} is not a matchable value", self)),
@@ -322,25 +198,21 @@ impl DynValue {
 #[derive(Debug, Clone)]
 enum Value {
     Static (StaticValue),
-    Str {var_name: String},
+    Str {var_name: Ident},
 }
 
 impl Value {
-    pub fn gen_match(&self, pre: &mut Vec<ast::Stmt>) -> P<ast::Expr> {
+    pub fn gen_match(&self, _pre: &mut Tokens) -> Tokens {
         match self {
-            &Value::Static(ref stat) => stat.gen_match(pre),
-            &Value::Str{ref var_name} => ExprBuilder::new().build_mac(gen_mac("_tredgen_match_str", &mut [
-                &mut |e| e.id("_at"),
-                &mut |e| e.id("_text"),
-                &mut |e| e.id(var_name),
-            ]))
+            &Value::Static(ref stat) => stat.gen_match(),
+            &Value::Str{ref var_name} => quote! { _tredgen_match_str!(_at, _text, #var_name) }
         }
     }
 }
 
 #[derive(Debug, Clone)]
 enum StaticValue {
-    Regex {id: String},
+    Regex {id: Ident},
     Str {value: String},
     Block {index: usize},
 }
@@ -350,28 +222,16 @@ impl StaticValue {
         Value::Static(self)
     }
 
-    pub fn gen_match(&self, pre: &mut Vec<ast::Stmt>) -> P<ast::Expr> {
+    pub fn gen_match(&self) -> Tokens {
         match self {
             &StaticValue::Str{ref value} => {
-                ExprBuilder::new().build_mac(gen_mac("_tredgen_match_str", &mut [
-                    &mut |e| e.id("_at"),
-                    &mut |e| e.id("_text"),
-                    &mut |e| e.str(&unescape(value).unwrap()[..]),
-                ]))
+                let string = unescape(value).unwrap();
+                quote! { _tredgen_match_str!(_at, _text, #string) }
             },
-            &StaticValue::Regex{ref id} => {
-                ExprBuilder::new().build_mac(gen_mac("_tredgen_match_regex", &mut [
-                    &mut |e| e.id("_at"),
-                    &mut |e| e.id("_text"),
-                    &mut |e| e.id(id),
-                ]))
-            },
+            &StaticValue::Regex{ref id} => quote! { _tredgen_match_regex!(_at, _text, #id) },
             &StaticValue::Block{ref index} => {
-                ExprBuilder::new().call()
-                    .id(format!("_blockfn_{}", index))
-                    .arg().id("_at")
-                    .arg().id("_text")
-                    .build()
+                let id = Ident::new(format!("_blockfn_{}", index));
+                quote! { #id(_at, _text) }
             }
         }
     }
@@ -379,174 +239,107 @@ impl StaticValue {
 
 #[derive(Debug, Clone)]
 struct CaptureDat {
-    pub acc_name: Option<String>,
-    pub start_name: String,
+    pub acc_name: Option<Ident>,
+    pub start_name: Ident,
     pub is_ended: bool,
 }
 
 impl CaptureDat {
-    pub fn start(vars: &SecNext, code: &mut Vec<ast::Stmt>) -> CaptureDat {
+    pub fn start(vars: &SecNext, code: &mut Tokens) -> CaptureDat {
         let dat = CaptureDat {
             acc_name: None,
             start_name: vars.next_name("_start_"),
             is_ended: false,
         };
 
-        code.push(StmtBuilder::new().let_()
-            .mut_id(&dat.start_name)
-            .ty().usize()
-            .build());
+        {
+            let name = &dat.start_name;
+            code.append(quote! { let mut #name: usize; });
+        }
 
         dat
     }
 
-    pub fn gen_start(&mut self) -> Vec<ast::Stmt> {
+    pub fn gen_start(&mut self) -> Tokens {
         self.is_ended = false;
 
-        vec![StmtBuilder::new().expr().assign()
-            .id(&self.start_name)
-            .id("_at")]
+        let name = &self.start_name;
+        quote! { #name = _at; }
     }
 
-    pub fn gen_end(&mut self, vars: &SecNext) -> Vec<ast::Stmt> {
+    pub fn gen_end(&mut self, vars: &SecNext) -> Tokens {
         let push = self.acc_name.is_some();
 
         if !push { self.acc_name = Some(vars.next_name("_acc_")); }
         let name = self.acc_name.as_ref().unwrap();
+        let start = &self.start_name;
 
         self.is_ended = true;
 
         if push {
-            vec![StmtBuilder::new().expr().method_call("push_str")
-                .id(name)
-                .arg().ref_().index()
-                    .id("_text")
-                    .range()
-                        .from().id(&self.start_name)
-                        .to().id("_at")
-                .build()
-            ]
-
+            quote! { #name.push_str(&_text[#start.._at]); }
         } else {
-            vec![StmtBuilder::new().let_()
-                .mut_id(name)
-                .expr().call()
-                    .path()
-                        .global()
-                        .ids(&["std", "string", "String", "from"])
-                        .build()
-                    .arg().ref_().index()
-                        .id("_text")
-                        .range()
-                            .from().id(&self.start_name)
-                            .to().id("_at")
-                    .build()
-            ]
+            quote! { let mut #name = _text[#start.._at].to_owned(); }
         }
     }
 
-    pub fn eval_ref(&self) -> P<ast::Expr> {
-        let expr = ExprBuilder::new();
-        match (self.is_ended, self.acc_name.is_some()) {
-            (false, true) => expr.ref_().index()
-                .paren().add()
-                    .method_call("clone")
-                        .id(self.acc_name.as_ref().unwrap())
-                        .build()
-                    .ref_().index()
-                        .id("_text")
-                        .range()
-                            .from().id(&self.start_name)
-                            .to().id("_at")
-                .range().build(),
-            (true, true) => expr.ref_().index()
-                .id(self.acc_name.as_ref().unwrap())
-                .range().build(),
-            (false, false) => expr.ref_().index()
-                .id("_text")
-                .range()
-                    .from().id(&self.start_name)
-                    .to().id("_at"),
+    pub fn eval_ref(&self) -> Tokens {
+        let start = &self.start_name;
+        match (self.is_ended, &self.acc_name) {
+            (false, &Some(ref acc)) => quote! { &(#acc.clone() + &_text[#start.._at]) },
+            (true, &Some(ref  acc)) => quote! { #acc.as_str() },
+            (false, &None) => quote! { &_text[#start.._at] },
             _ => panic!("Illegal capture state")
         }
     }
 
-    pub fn eval_own(&self) -> P<ast::Expr> {
-        let expr = ExprBuilder::new();
-        match (self.is_ended, self.acc_name.is_some()) {
-            (false, true) => expr.add()
-                .method_call("clone")
-                    .id(self.acc_name.as_ref().unwrap())
-                    .build()
-                .ref_().index()
-                    .id("_text")
-                    .range()
-                        .from().id(&self.start_name)
-                        .to().id("_at"),
-            (true, true) => expr.method_call("clone")
-                .id(self.acc_name.as_ref().unwrap())
-                .build(),
-            (false, false) => expr.call()
-                .path()
-                    .global()
-                    .ids(&["std", "string", "String", "from"])
-                    .build()
-                .arg().ref_().index()
-                    .id("_text")
-                    .range()
-                        .from().id(&self.start_name)
-                        .to().id("_at")
-                .build(),
-            (true, false) => panic!("Illegal capture state")
+    pub fn eval_own(&self) -> Tokens {
+        let start = &self.start_name;
+        match (self.is_ended, &self.acc_name) {
+            (false, &Some(ref acc)) => quote! { #acc.clone() + &_text[#start.._at] },
+            (true, &Some(ref  acc)) => quote! { #acc.clone() },
+            (false, &None) => quote! { _text[#start.._at].to_owned() },
+            _ => panic!("Illegal capture state")
         }
     }
 }
 
-fn gen_expr_vals(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args: &Vec<Box<Token>>) -> Vec<ast::Stmt> {
+fn gen_expr_vals(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args: &Vec<Box<Token>>) -> Tokens {
+    let mac = Ident::new(mac);
     let err = format!("\"{}\" expr \"{} <value> [<value>...]\" has invalid args: {:?}", op, op, args);
-    let mut out = Vec::new();
+    let mut out = Tokens::new();
 
     if args.len() < 1 {
         panic!(err); // TODO no panics
     }
 
-    let vals: Vec<Value> = args.iter()
-        .map(|b| gen_value(dat, blocki, b.as_ref(), &mut out).expect(&err))
-        .collect();
-
-    let block = &dat.blocks[blocki];
     let res_vec = dat.vars.next_name("_resvec_");
+    let other_args: Vec<_> = args.iter()
+        .map(|b| gen_value(dat, blocki, b.as_ref(), &mut out)
+            .expect(&err)
+            .gen_match(&mut out))
+        .collect();
+    let block = &dat.blocks[blocki];
+    let block = block.gen_append(&dat.vars, &res_vec);
+    out.append(quote! { #mac!(_at, _text, #res_vec, #block #(, #other_args)*); });
 
-    let mut macargs: Vec<P<ast::Expr>> = vec![
-        ExprBuilder::new().id("_at"),
-        ExprBuilder::new().id("_text"),
-        ExprBuilder::new().id(&res_vec),
-
-        block.gen_append(ExprBuilder::new(), &dat.vars, &res_vec),
-    ];
-    macargs.extend(vals.into_iter().map(|v| v.gen_match(&mut out)));
-
-    out.push(StmtBuilder::new().expr().build_mac(gen_mac_direct(mac,macargs)));
     out
 }
 
-fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args: &Vec<Box<Token>>) -> Vec<ast::Stmt> {
+fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args: &Vec<Box<Token>>) -> Tokens {
+    let mac = Ident::new(mac);
     let err = format!("\"{}\" expr \"{} <value>\" has invalid args: {:?}", op, op, args);
 
     if let [box ref val] = args[..] {
-        let mut out = Vec::new();
+        let mut out = Tokens::new();
+
         let val = gen_value(dat, blocki, val, &mut out).expect(&err);
         let block = &dat.blocks[blocki];
         let res_vec = dat.vars.next_name("_resvec_");
+        let block = block.gen_append(&dat.vars, &res_vec);
+        let mat = val.gen_match(&mut out);
 
-        let stmt = StmtBuilder::new().expr().build_mac(gen_mac(mac, &mut [
-            &mut |e| e.id("_at"),
-            &mut |e| e.id("_text"),
-            &mut |e| e.id(&res_vec),
-            &mut |e| block.gen_append(e, &dat.vars, &res_vec),
-            &mut |e| e.build(val.gen_match(&mut out)),
-        ]));
-        out.push(stmt);
+        out.append(quote! { #mac!(_at, _text, #res_vec, #block, #mat); });
 
         out
     } else {
@@ -554,7 +347,7 @@ fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args:
     }
 }
 
-fn gen_token_output(dat: &CompileData, block: usize, def: DefPart, item: &Token) -> Result<P<ast::Expr>, String>  {
+fn gen_token_output(dat: &CompileData, block: usize, def: DefPart, item: &Token) -> Result<Tokens, String>  {
     match (def, item) {
         (DefPart::ITEM, &Token::Tuple(Some(box Token::Name(ref name)), ref parts)) => {
             let part_defs = dat.defs.iter().find(|v| v.0 == &name[..]);
@@ -563,21 +356,17 @@ fn gen_token_output(dat: &CompileData, block: usize, def: DefPart, item: &Token)
 
             if part_defs.len() != parts.len() { return Err(format!("{} has {} members, only {} were supplied", name, part_defs.len(), parts.len())); }
 
+            let name = Ident::new(name.as_str());
             if !part_defs.is_empty() {
-                let mut eb = ExprBuilder::new().some().box_().call()
-                    .path().ids(&["Token", name]).build();
-
-                for i in 0..part_defs.len() {
-                    match gen_token_output(dat, block, part_defs[i], parts[i].as_ref()) {
-                        Ok(e) => eb = eb.with_arg(e),
-                        e @ _ => return e,
-                    }
+                let params: Result<Vec<_>, _> = (0..part_defs.len()).map(|i| 
+                    gen_token_output(dat, block, part_defs[i], parts[i].as_ref()))
+                    .collect();
+                match params {
+                    Ok(params) => Ok(quote! { Some(::std::boxed::Box::new(Token::#name(#(#params),*))) }),
+                    Err(e) => Err(e),
                 }
-
-                Ok(eb.build())
             } else {
-                Ok(ExprBuilder::new().some().box_()
-                    .path().ids(&["Token", name]).build())
+                Ok(quote! { Some(::std::boxed::Box::new(Token::#name)) })
             }
         },
         (DefPart::ITEM, &Token::Name(ref name)) => {
@@ -599,7 +388,10 @@ fn gen_token_output(dat: &CompileData, block: usize, def: DefPart, item: &Token)
                 Some(&DynValue::Capture {dat: ref dat}) => Ok(dat.eval_own()),
                 Some(v @ _) => Err(format!("{} ({:?}) is dynamic but not a capture", name, v)),
                 None => match dat.blocks[block].statics.get(name) {
-                    Some(&StaticValue::Str {value: ref val}) => Ok(ExprBuilder::new().str(&unescape(val).unwrap()[..])),
+                    Some(&StaticValue::Str {value: ref val}) => {
+                        let val = unescape(val).unwrap();
+                        Ok(quote! { #val })
+                    },
                     Some(v @ _) => Err(format!("{} ({:?}) is static but not a string", name, v)),
                     None => Err(format!("{} does not name a value", name)),
                 }
@@ -608,20 +400,21 @@ fn gen_token_output(dat: &CompileData, block: usize, def: DefPart, item: &Token)
 
         },
         (DefPart::STR, &Token::StrLiteral(ref val)) => {
-            Ok(ExprBuilder::new().str(&unescape(val).unwrap()[..]))
+            let val = unescape(val).unwrap();
+            Ok(quote! { #val })
         },
         _ => Err(format!("{:?} is not a valid as a {:?} member", item, def))
     }
 }
 
-fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &Vec<Box<Token>>) -> Vec<ast::Stmt> {
+fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &Vec<Box<Token>>) -> Tokens {
     let vars = dat.vars.clone();
 
     match &op[..] {
         // def expression (already handled)
-        "def" => Vec::new(),
+        "def" => Tokens::new(),
         // stat expression (already handled)
-        "stat" => Vec::new(),
+        "stat" => Tokens::new(),
         "not" => {
             gen_expr_val("_tredgen_not", "not", dat, blocki, args)
         },
@@ -630,7 +423,6 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
             let mut block = &mut dat.blocks[blocki];
 
             if let [box Token::Name(ref name)] = args[..] {
-
                 match block.dyns.entry(name.clone()) {
                     hash_map::Entry::Occupied(mut e) => {
                         {if let &mut DynValue::Capture{dat: ref mut cap} = e.get_mut() {
@@ -639,7 +431,7 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
                         panic!(format!("Can not use existing value {:?} for capture", e.get()));
                     },
                     hash_map::Entry::Vacant(e) => {
-                        let mut out = Vec::new();
+                        let mut out = Tokens::new();
                         let mut cap = CaptureDat::start(&vars, &mut out);
                         out.append(&mut cap.gen_start());
                         e.insert(DynValue::Capture{dat: cap});
@@ -662,7 +454,7 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
                             panic!(format!("Already appending into \"{}\"", n));
                         }
                         block.active_into.push(rec.clone());
-                        return Vec::new();
+                        return Tokens::new();
                     },
                     Some(v @ _) => panic!(format!("Can not append into \"{}\", already has value: {:?}", n, v)),
                     None => name = n,
@@ -672,20 +464,11 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
             }
 
             let exporting = name == "export";
-            let id = if exporting { String::from("_out") } else { vars.next_name("_intolist_") };
+            let id = if exporting { Ident::new("_out") } else { vars.next_name("_intolist_") };
             let rec = IntoRec::List(id.clone());
             block.active_into.push(rec.clone());
             block.dyns.insert(name.clone(), DynValue::IntoVal(rec));
-            if exporting { Vec::new() } else {
-                vec![StmtBuilder::new().let_()
-                .mut_id(&id)
-                .expr().call()
-                    .path()
-                        .global()
-                        .ids(&["std", "vec", "Vec", "new"])
-                        .build()
-                    .build()]
-            }
+            if exporting { Tokens::new() } else { quote! { let mut #id = ::std::vec::Vec::new(); } }
         },
         "into_once" => {
             let err = format!("\"into_once\" expr \"into_once <name>\" has invalid args: {:?}", args);
@@ -699,7 +482,7 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
                             panic!(format!("Already assigning into \"{}\"", n));
                         }
                         block.active_into.push(rec.clone());
-                        return Vec::new();
+                        return Tokens::new();
                     },
                     Some(v @ _) => panic!(format!("Can not assign into \"{}\", already has value: {:?}", n, v)),
                     None => name = n,
@@ -709,15 +492,11 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
             }
 
             let exporting = name == "export";
-            let id = if exporting { String::from("_out") } else { vars.next_name("_intoonce_") };
+            let id = if exporting { Ident::new("_out") } else { vars.next_name("_intoonce_") };
             let rec = IntoRec::Once(id.clone(), exporting);
             block.active_into.push(rec.clone());
             block.dyns.insert(name.clone(), DynValue::IntoVal(rec));
-            if exporting { Vec::new() } else {
-                vec![StmtBuilder::new().let_()
-                    .mut_id(&id)
-                    .expr().none()]
-            }
+            if exporting { Tokens::new() } else { quote! { let mut #id = None; } }
         },
         "stop" => {
             let err = format!("\"stop\" expr \"stop <name>\" has invalid args: {:?}", args);
@@ -740,7 +519,7 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
                     panic!(format!("Can not stop nonexistent value {}", name))
                 }
 
-                Vec::new()
+                Tokens::new()
             } else {
                 panic!(err); // TODO no panics
             }
@@ -763,11 +542,8 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
         "export" => {
             let err = format!("\"export\" expr \"export <enum>(<data>...)\" has invalid args: {:?}", args);
             if let [box ref item] = args[..] {
-                vec![StmtBuilder::new().expr().method_call("extend")
-                    .id("_out")
-                    .with_arg(gen_token_output(dat, blocki, DefPart::ITEM, item).expect(&err))
-                    .build()
-                ]
+                let expr = gen_token_output(dat, blocki, DefPart::ITEM, item).expect(&err);
+                quote! { _out.extend(#expr); }
             } else {
                 panic!(err);
             }  
@@ -777,19 +553,14 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
     }
 }
  
-fn compile_expr(dat: &mut CompileData, block: usize, op: &Token, args: &Vec<Box<Token>>) -> Vec<ast::Stmt> {
-    let mut out = Vec::new();
+fn compile_expr(dat: &mut CompileData, block: usize, op: &Token, args: &Vec<Box<Token>>) -> Tokens {
+    let mut out = Tokens::new();
 
     if let Ok(val) = gen_value(dat, block, op, &mut out) {
         let res_vec = dat.vars.next_name("_resvec_");
-
-        let stmt = StmtBuilder::new().expr().build_mac(gen_mac("_tredgen_append", &mut [
-            &mut |e| e.id("_at"),
-            &mut |e| e.id(&res_vec),
-            &mut |e| dat.blocks[block].gen_append(e, &dat.vars, &res_vec),
-            &mut |e| e.try().build(val.gen_match(&mut out)),
-        ]));
-        out.push(stmt);
+        let block = dat.blocks[block].gen_append(&dat.vars, &res_vec);
+        let mat = val.gen_match(&mut out);
+        out.append(quote! { _tredgen_append!(_at, #res_vec, #block, #mat?); });
         out
     } else if let &Token::Name(ref name) = op {
         compile_name_expr(dat, block, name, args)
@@ -798,23 +569,7 @@ fn compile_expr(dat: &mut CompileData, block: usize, op: &Token, args: &Vec<Box<
     }
 }
 
-fn gen_mac_direct(name: &str, exprs: Vec<P<ast::Expr>>) ->  ast::Mac {
-    let mut mac = MacBuilder::new().path().id(name).build();
-    let mut first = true;
-    for e in exprs {
-        if !first { mac = mac.expr().id(","); }
-        else { first = false; }
-        mac = mac.expr().build(e);
-
-    }
-    mac.build()
-}
-
-fn gen_mac(name: &str, exprs: &mut [&mut FnMut(ExprBuilder) -> P<ast::Expr>]) ->  ast::Mac {
-    gen_mac_direct(name, exprs.iter_mut().map(|f| f(ExprBuilder::new())).collect())
-}
-
-fn gen_value<'a>(dat: &'a mut CompileData, block: usize, from: &Token, prefix: &mut Vec<ast::Stmt>) -> Result<Value, String> {
+fn gen_value<'a>(dat: &'a mut CompileData, block: usize, from: &Token, prefix: &mut Tokens) -> Result<Value, String> {
     let vars = dat.vars.clone();
 
     {
@@ -895,7 +650,7 @@ fn gen_static_value_delayed<'a, 'b>(dat: &'b mut CompileData, block: usize, from
         &Token::Regex(ref source) => {
             let source = sanitize_regex(source);
             let index = dat.regexs.entry(source).or_insert(dat.vars.next());
-            let id = format!("_REGEX_{}", index);
+            let id = Ident::new(format!("_REGEX_{}", index));
 
             Ok((None, StaticValue::Regex{ id: id }))
         }
@@ -909,7 +664,7 @@ fn gen_static_value_delayed<'a, 'b>(dat: &'b mut CompileData, block: usize, from
     }
 }
 
-fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Token>]) -> P<ast::Block> {
+fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Token>]) -> Tokens {
     let mut later = Vec::new();
 
     // find and compile statics
@@ -959,36 +714,23 @@ fn compile_from_iter(dat: &mut CompileData, block: usize, toks: &[Box<Token>]) -
 
     for d in later { d.run(dat); }
 
-    let mut code = BlockBuilder::new();
-    code = code.stmt().let_()
-        .mut_id("_at")
-        .expr().id("_start");
-    code = code.stmt().let_()
-    .mut_id("_out")
-    .expr().call()
-        .path()
-            .global()
-            .ids(&["std", "vec", "Vec", "new"])
-            .build()
-        .build();
+    let mut code = quote! {
+        let mut _at = _start;
+        let mut _out = ::std::vec::Vec::new();
+    };
 
     // actually compile
     for t in toks {
         match t {
-            &box Token::Expr(Some(ref op), ref args) => code = code.with_stmts(
-                compile_expr(dat, block, op.as_ref(), args).into_iter()),
+            &box Token::Expr(Some(ref op), ref args) => code.append(
+                compile_expr(dat, block, op.as_ref(), args)),
             &box Token::Comment(_) => (),
             _ => panic!(format!("{:?} is not a valid program line", t)),
         }
     }
 
-    code = code.stmt().expr().ok()
-    .tuple()
-        .expr().id("_at")
-        .expr().id("_out")
-        .build();
-
-    code.build()
+    code.append(quote! { Ok((_at, _out)) });
+    code
 }
 
 pub fn compile(toks: &[Box<Token>]) {
@@ -996,117 +738,56 @@ pub fn compile(toks: &[Box<Token>]) {
     dat.blocks.push(BlockDat::new(0, None));
     dat.blocks[0].block = Some(compile_from_iter(&mut dat, 0, toks));
 
-    let mut items: Vec<P<ast::Item>> = Vec::new();
+    let mut items = Tokens::new();
 
-    let mut tokenum = ItemBuilder::new()
-    .attr()
-        .list("derive")
-        .words(&["Clone", "Debug"])
-        .build()
-    .pub_().enum_("Token");
-    for (id, parts) in dat.defs {
-        tokenum =  if let Some((first, rest)) = parts.split_first() {
-            let mut vs = tokenum.tuple(id)
-                .build_ty(first.ty());
-            for p in rest { vs = vs.with_ty(p.ty()); }
-            vs.build()
+    let varis = dat.defs.into_iter().map(|(id, parts)| {
+        let id = Ident::new(id);
+        if parts.is_empty() { 
+            quote! { #id }
         } else {
-            tokenum.id(id)
+            let tys = parts.iter().map(|p| p.ty());
+            quote! { #id(#(#tys),*) } 
         }
-    }
-    items.push(tokenum.build());
+    });
+    items.append(quote! {
+        #[derive(Clone, Debug)]
+        pub enum Token {
+            #(#varis,)*
+        }
+    });
 
-    let mainfn = ItemBuilder::new().pub_().fn_("parse")
-        .arg()
-            .id("input")
-            .ty().ref_().ty().id("str")
-        .return_()
-            .result()
-                .path()
-                    .global()
-                    .id("std")
-                    .id("vec")
-                    .segment("Vec")
-                        .ty().box_().id("Token")
-                        .build()
-                    .build()
-                .path()
-                    .global()
-                    .id("tredlib")
-                    .id("ParseErr")
-        .build().block()
-        .stmt().expr().match_()
-            .call()
-                .id(&dat.blocks[0].id)
-                .arg().usize(0)
-                .arg().id("input")
-                .build()
-            .arm()
-                .pat().ok().tuple()
-                    .pat().wild()
-                    .pat().id("tree")
-                    .build()
-                .body().ok().id("tree")
-            .arm()
-                .pat().err().id("err")
-                .body().err().id("err")
-            .build()
-        .build();
-    items.push(mainfn);
+    let vbt_ty = vec_box("Token");
+    let main_block = Ident::new(format!("_blockfn_{}", dat.blocks[0].index));
+    items.append(quote! {
+        pub fn parse(input: &str) -> Result<#vbt_ty, ::tredlib::ParseErr> {
+            match #main_block(0usize, input) {
+                Result::Ok((_, tree)) => Result::Ok(tree),
+                Result::Err(err) => Result::Err(err),
+            }
+        }
+    });
 
-    let mut regexmac = ItemBuilder::new().mac().path().id("lazy_static").build();
-    let mut regexs: Vec<(&String, &usize)> = dat.regexs.iter().collect();
-    regexs.sort_by(|a, b| a.1.cmp(b.1));
-    for (source, index) in regexs {
-        regexmac = regexmac
-        .expr().id("static")
-        .expr().id("ref")
-        .expr().assign()
-            .type_()
-                .id(format!("_REGEX_{}", index))
-                .path().global().ids(&["tredlib", "regex", "Regex"]).build()
-            .method_call("unwrap")
-                .call()
-                    .path().global().ids(&["tredlib", "regex", "Regex", "new"]).build()
-                    .arg().str(&(String::from("^") + &source[..])[..])
-                    .build()
-                .build()
-        .expr().id(";");
-    }
-    items.push(regexmac.build());
+    let reg_defs = dat.regexs.into_iter().map(|(source, index)| {
+        let id = Ident::new(format!("_REGEX_{}", index));
+        let source = format!("^{}", source);
+        quote! { static ref #id: ::tredlib::regex::Regex = ::tredlib::regex::Regex::new(#source).unwrap(); }
+    });
+    items.append(quote! {
+        lazy_static! {
+            #(#reg_defs)*
+        }
+    });
 
     for b in dat.blocks {
-        items.push(ItemBuilder::new().fn_(b.id)
-            .arg()
-                .id("_start")
-                .ty().usize()
-            .arg()
-                .id("_text")
-                .ty().ref_()
-                    .ty().id("str")
-            .return_()
-                .result()
-                    .tuple()
-                        .ty().usize()
-                        .ty().path()
-                            .global()
-                            .id("std")
-                            .id("vec")
-                            .segment("Vec")
-                                .ty().box_().id("Token")
-                                .build()
-                            .build()
-                        .build()
-                    .path()
-                        .global()
-                        .id("tredlib")
-                        .id("ParseErr")
-            .build()
-        .build(b.block.unwrap()))
+        let id = Ident::new(format!("_blockfn_{}", b.index));
+        let body = b.block.unwrap();
+        items.append(quote! {
+            fn #id(_start: usize, _text: &str) -> Result<(usize, #vbt_ty), ::tredlib::ParseErr> {
+                #body
+            }
+        });
     }
 
-    for f in items {
-        println!("{}", syntax::print::pprust::item_to_string(f.deref()));
-    }
+    println!("{}", items);
     // TODO enums, funcs, and final output
 }

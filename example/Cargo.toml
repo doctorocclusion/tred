@@ -5,4 +5,4 @@ authors = ["Sam Sartor <me@samsartor.com>"]
 
 [dependencies]
 tredlib = { path = "../tredlib" }
-lazy_static = "*"
+lazy_static = "0.2.2"

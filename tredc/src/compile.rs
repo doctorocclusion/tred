@@ -98,6 +98,7 @@ struct BlockDat {
     pub statics: HashMap<String, StaticValue>,
     pub dyns: HashMap<String, DynValue>,
     pub active_into: Vec<IntoRec>,
+    pub outer: Option<StaticValue>,
     pub block: Option<Tokens>,
 }
 
@@ -109,6 +110,7 @@ impl BlockDat {
             statics: HashMap::new(),
             dyns: HashMap::new(),
             active_into: Vec::new(),
+            outer: None,
             block: None,
         }
     }
@@ -119,7 +121,7 @@ impl BlockDat {
             .iter()
             .enumerate()
             .filter_map(|(i, into)| into.append_part(vec, i == last));
-        quote! { {#(#intos)*} }
+        quote! { #(#intos)* }
     }
 }
 
@@ -144,10 +146,10 @@ impl IntoRec {
         match (self, leave) {
             (&IntoRec::Once(ref var, false), true) => quote! { #var.clone() },
             (&IntoRec::Once(ref var, true), true) 
-            | (&IntoRec::List(ref var), true) => quote! { #var.iter().cloned().next() },
+            | (&IntoRec::List(ref var), true) => quote! { #var.last().cloned() },
             (&IntoRec::Once(ref var, false), false) => quote! { #var },
             (&IntoRec::Once(ref var, true), false)
-            | (&IntoRec::List(ref var), false) => quote! { var.into_iter().next() }
+            | (&IntoRec::List(ref var), false) => quote! { var.pop() }
         }
     }
 
@@ -202,9 +204,9 @@ enum Value {
 }
 
 impl Value {
-    pub fn gen_match(&self, _pre: &mut Tokens) -> Tokens {
+    pub fn gen_match(&self, _pre: &mut Tokens, is_outer: bool) -> Tokens {
         match self {
-            &Value::Static(ref stat) => stat.gen_match(),
+            &Value::Static(ref stat) => stat.gen_match(is_outer),
             &Value::Str{ref var_name} => quote! { _tredgen_match_str!(_at, _text, #var_name) }
         }
     }
@@ -222,7 +224,7 @@ impl StaticValue {
         Value::Static(self)
     }
 
-    pub fn gen_match(&self) -> Tokens {
+    pub fn gen_match(&self, is_outer: bool) -> Tokens {
         match self {
             &StaticValue::Str{ref value} => {
                 let string = unescape(value).unwrap();
@@ -231,7 +233,11 @@ impl StaticValue {
             &StaticValue::Regex{ref id} => quote! { _tredgen_match_regex!(_at, _text, #id) },
             &StaticValue::Block{ref index} => {
                 let id = Ident::new(format!("_blockfn_{}", index));
-                quote! { #id(_at, _text) }
+                if is_outer {
+                    quote! { #id(_at, _text, &_out) }
+                } else {
+                    quote! { #id(_at, _text, _inner) }
+                }
             }
         }
     }
@@ -317,16 +323,16 @@ fn gen_expr_vals(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args
     let other_args: Vec<_> = args.iter()
         .map(|b| gen_value(dat, blocki, b.as_ref(), &mut out)
             .expect(&err)
-            .gen_match(&mut out))
+            .gen_match(&mut out, false))
         .collect();
     let block = &dat.blocks[blocki];
-    let block = block.gen_append(&dat.vars, &res_vec);
-    out.append(quote! { #mac!(_at, _text, #res_vec, #block #(, #other_args)*); });
+    let outcode = block.gen_append(&dat.vars, &res_vec);
+    out.append(quote! { #mac!(_at, _text, #res_vec, { #outcode } #(, #other_args)*); });
 
     out
 }
 
-fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args: &Vec<Box<Token>>) -> Tokens {
+fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args: &Vec<Box<Token>>, outer: bool) -> Tokens {
     let mac = Ident::new(mac);
     let err = format!("\"{}\" expr \"{} <value>\" has invalid args: {:?}", op, op, args);
 
@@ -336,10 +342,13 @@ fn gen_expr_val(mac: &str, op: &str, dat: &mut CompileData, blocki: usize, args:
         let val = gen_value(dat, blocki, val, &mut out).expect(&err);
         let block = &dat.blocks[blocki];
         let res_vec = dat.vars.next_name("_resvec_");
-        let block = block.gen_append(&dat.vars, &res_vec);
-        let mat = val.gen_match(&mut out);
+        let mut outcode = if outer {
+            quote! { _out.clear(); }
+        } else { Tokens::new() };
+        outcode.append(block.gen_append(&dat.vars, &res_vec));
+        let mat = val.gen_match(&mut out, outer);
 
-        out.append(quote! { #mac!(_at, _text, #res_vec, #block, #mat); });
+        out.append(quote! { #mac!(_at, _text, #res_vec, { #outcode }, #mat); });
 
         out
     } else {
@@ -369,6 +378,12 @@ fn gen_token_output(dat: &CompileData, block: usize, def: DefPart, item: &Token)
                 Ok(quote! { Some(::std::boxed::Box::new(Token::#name)) })
             }
         },
+        (DefPart::ITEM, &Token::Name(ref name)) if name == "inner" => Ok(quote! {
+            _inner.last().cloned()
+        }),
+        (DefPart::LIST, &Token::Name(ref name)) if name == "inner" => Ok(quote! {
+            _inner.clone()
+        }),
         (DefPart::ITEM, &Token::Name(ref name)) => {
             match dat.blocks[block].dyns.get(name) {
                 Some(&DynValue::IntoVal(ref into)) => Ok(into.as_opt(true)),
@@ -416,7 +431,13 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
         // stat expression (already handled)
         "stat" => Tokens::new(),
         "not" => {
-            gen_expr_val("_tredgen_not", "not", dat, blocki, args)
+            gen_expr_val("_tredgen_not", "not", dat, blocki, args, false)
+        },
+        "outer" => {
+            gen_expr_val("_tredgen_outer", "outer", dat, blocki, args, true)
+        },
+        "nested" => {
+            gen_expr_val("_tredgen_nested", "nested", dat, blocki, args, true)
         },
         "capture" => {
             let err = format!("\"capture\" expr \"capture <name>\" has invalid args: {:?}", args);
@@ -548,6 +569,9 @@ fn compile_name_expr(dat: &mut CompileData, blocki: usize, op: &String, args: &V
                 panic!(err);
             }  
         },
+        "or" => {
+            gen_expr_vals("_tredgen_or", "option", dat, blocki, args)
+        },
         // no other expressions
         op @ _ => panic!(format!("Unknown operation: {}", op)),
     }
@@ -558,9 +582,9 @@ fn compile_expr(dat: &mut CompileData, block: usize, op: &Token, args: &Vec<Box<
 
     if let Ok(val) = gen_value(dat, block, op, &mut out) {
         let res_vec = dat.vars.next_name("_resvec_");
-        let block = dat.blocks[block].gen_append(&dat.vars, &res_vec);
-        let mat = val.gen_match(&mut out);
-        out.append(quote! { _tredgen_append!(_at, #res_vec, #block, #mat?); });
+        let outcode = dat.blocks[block].gen_append(&dat.vars, &res_vec);
+        let mat = val.gen_match(&mut out, false);
+        out.append(quote! { _tredgen_append!(_at, #res_vec, { #outcode }, #mat?); });
         out
     } else if let &Token::Name(ref name) = op {
         compile_name_expr(dat, block, name, args)
@@ -760,7 +784,7 @@ pub fn compile(toks: &[Box<Token>]) {
     let main_block = Ident::new(format!("_blockfn_{}", dat.blocks[0].index));
     items.append(quote! {
         pub fn parse(input: &str) -> Result<#vbt_ty, ::tredlib::ParseErr> {
-            match #main_block(0usize, input) {
+            match #main_block(0usize, input, &[]) {
                 Result::Ok((_, tree)) => Result::Ok(tree),
                 Result::Err(err) => Result::Err(err),
             }
@@ -782,7 +806,7 @@ pub fn compile(toks: &[Box<Token>]) {
         let id = Ident::new(format!("_blockfn_{}", b.index));
         let body = b.block.unwrap();
         items.append(quote! {
-            fn #id(_start: usize, _text: &str) -> Result<(usize, #vbt_ty), ::tredlib::ParseErr> {
+            fn #id(_start: usize, _text: &str, _inner: &[::std::boxed::Box<Token>]) -> Result<(usize, #vbt_ty), ::tredlib::ParseErr> {
                 #body
             }
         });

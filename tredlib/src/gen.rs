@@ -71,6 +71,24 @@ macro_rules! _tredgen_not {
 }
 
 #[macro_export]
+macro_rules! _tredgen_outer {
+    ($pos:ident, $text:ident, $vec:ident, $out:expr, $x:expr) => {
+        if let ::std::result::Result::Ok(__res) = $x {
+            _tredgen_append!($pos, $vec, $out, __res);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! _tredgen_nested {
+    ($pos:ident, $text:ident, $vec:ident, $out:expr, $x:expr) => {
+        while let ::std::result::Result::Ok(__res) = $x {
+            _tredgen_append!($pos, $vec, $out, __res);
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! _tredgen_option {
     ($pos:ident, $text:ident, $vec:ident, $out:expr, $x1:expr $(, $x2:expr)*) => {
         if let ::std::result::Result::Ok(mut __res) = $x1 {
